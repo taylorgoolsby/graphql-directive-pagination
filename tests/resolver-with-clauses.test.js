@@ -1,18 +1,8 @@
 import test from 'boxtape'
-import {makeExecutableSchema} from '@graphql-tools/schema'
-import { printSchemaWithDirectives } from '@graphql-tools/utils'
-import paginationDirective from '../lib/index.js'
-import {execute} from 'graphql'
-import gql from 'graphql-tag'
 import pagination from '../lib/resolver.js'
 import sinon from 'sinon'
 import sqlite3 from 'sqlite3'
 import {open} from 'sqlite'
-
-const {
-  paginationDirectiveTypeDefs,
-  paginationDirectiveTransform,
-} = paginationDirective('pagination')
 
 const db = await open({
   filename: ':memory:',
@@ -77,7 +67,6 @@ async function getPosts(clauses) {
     ORDER BY ${clauses.orderBy}
     LIMIT ${clauses.limit};
   `
-  // console.log('query', query)
   const rows = await db.all(query)
   return rows
 }
@@ -96,7 +85,6 @@ test('page load request on empty data source', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 0, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -136,7 +124,6 @@ test('page load request on empty data source with negative offset', async (t) =>
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 0, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -182,7 +169,6 @@ test('page load request with negative offset', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 0, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -198,7 +184,6 @@ test('page load request with negative offset', async (t) => {
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
@@ -215,7 +200,6 @@ test('page load request with negative offset', async (t) => {
       t.equal(rows[0].id, 9, 'getPositiveRows finds row 9')
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
       t.equal(rows[2].id, 7, 'getPositiveRows finds row 7')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
@@ -229,7 +213,6 @@ test('page load request with negative offset', async (t) => {
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     }
   })
@@ -255,7 +238,6 @@ test('page load request on non-zero starting page', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 4, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -271,7 +253,6 @@ test('page load request on non-zero starting page', async (t) => {
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
@@ -288,7 +269,6 @@ test('page load request on non-zero starting page', async (t) => {
       t.equal(rows[0].id, 5, 'getPositiveRows finds row 5')
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
       t.equal(rows[2].id, 3, 'getPositiveRows finds row 3')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
@@ -302,7 +282,6 @@ test('page load request on non-zero starting page', async (t) => {
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     }
   })
@@ -331,7 +310,6 @@ test('page load request', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 0, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -347,7 +325,6 @@ test('page load request', async (t) => {
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
@@ -364,7 +341,6 @@ test('page load request', async (t) => {
       t.equal(rows[0].id, 9, 'getPositiveRows finds row 9')
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
       t.equal(rows[2].id, 7, 'getPositiveRows finds row 7')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
@@ -378,7 +354,6 @@ test('page load request', async (t) => {
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     }
   })
@@ -404,7 +379,6 @@ test('load more request', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 2, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -424,7 +398,6 @@ test('load more request', async (t) => {
       t.equal(rows[0].id, 7, 'getPositiveRows finds row 7')
       t.equal(rows[1].id, 6, 'getPositiveRows finds row 6')
       t.equal(rows[2].id, 5, 'getPositiveRows finds row 5')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
@@ -438,7 +411,6 @@ test('load more request', async (t) => {
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     }
   })
@@ -467,7 +439,6 @@ test('load more request after new rows have been added', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 4, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -487,7 +458,6 @@ test('load more request after new rows have been added', async (t) => {
       t.equal(rows[0].id, 5, 'getPositiveRows finds row 5')
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
       t.equal(rows[2].id, 3, 'getPositiveRows finds row 3')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
@@ -528,7 +498,6 @@ test('load new request', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, -2, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -578,7 +547,6 @@ test('add two more posts and continue load more where left off', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 8, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -598,7 +566,6 @@ test('add two more posts and continue load more where left off', async (t) => {
       t.equal(rows[0].id, 3, 'getPositiveRows finds row 3')
       t.equal(rows[1].id, 2, 'getPositiveRows finds row 2')
       t.equal(rows[2].id, 1, 'getPositiveRows finds row 1')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 11', 'mysql where arg, getNegativeRows call')
@@ -642,7 +609,6 @@ test('load new request while db added new rows', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, -2, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -689,7 +655,6 @@ test('final load more request (has more false)', async (t) => {
 
   const wrappedResolver = pagination(async (parent, args) => {
     callSpy()
-    // console.log(callSpy.callCount, 'args', args)
 
     t.equal(args.offset, 12, 'offset arg')
     t.equal(args.limit, 2, 'limit arg')
@@ -708,7 +673,6 @@ test('final load more request (has more false)', async (t) => {
       t.equal(rows.length, 2, 'getPositiveRows finds 2 rows (no extra row)')
       t.equal(rows[0].id, 1, 'getPositiveRows finds row 1')
       t.equal(rows[1].id, 0, 'getPositiveRows finds row 0')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     } else if (callSpy.callCount === 2) {
       t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'mysql where arg, getNegativeRows call')
@@ -724,7 +688,6 @@ test('final load more request (has more false)', async (t) => {
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 14, 'row 14 is new')
       t.equal(rows[1].id, 15, 'row 15 is new')
-      // console.log(callSpy.callCount, 'rows', rows)
       return rows
     }
   })
@@ -744,76 +707,3 @@ test('final load more request (has more false)', async (t) => {
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
 })
-
-// todo: check what happens if the resolver returns empty array.
-
-// const resolvers = {
-//   User: {
-//     // posts: pagination(async (user, args) => {
-//     //   console.log('args', args)
-//     //   return posts
-//     // })
-//     test: pagination(async (user, args) => {
-//       console.log('test args', args)
-//       return [{
-//         id: 1
-//       }]
-//     }),
-//     posts: async (user, args) => {
-//       console.log('args', args)
-//       return posts
-//     }
-//   },
-//   Query: {
-//     user: async () => {
-//       return {
-//         id: 0
-//       }
-//     }
-//   }
-// }
-//
-// let schema = makeExecutableSchema({
-//   typeDefs: [paginationDirectiveTypeDefs, typeDefs],
-//   resolvers
-// })
-//
-// schema = paginationDirectiveTransform(schema)
-//
-// // console.log('printSchemaWithDirectives(schema)', printSchemaWithDirectives(schema))
-//
-// const query = gql`
-//   query {
-//     user {
-//       id
-//       test(offset: 0, limit: 1) {
-//         node {
-//           id
-//         }
-//       }
-//     }
-//   }
-// `
-//
-// const output = await execute({
-//   schema,
-//   document: query,
-//   variableValues: {
-//
-//   },
-//   rootValue: {}
-// })
-//
-// console.log('output', JSON.stringify(output, null, '  '))
-
-// function runTest(t, typeDefs, expected) {
-//
-//   schema = paginationDirectiveTransform(schema)
-//   const answer = printSchemaWithDirectives(schema)
-//
-//   if (answer !== expected) {
-//     console.log('answer', answer)
-//   }
-//
-//   t.equal(answer, expected)
-// }

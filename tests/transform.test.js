@@ -33,6 +33,10 @@ directive @pagination on FIELD_DEFINITION
 
 directive @sql on FIELD_DEFINITION
 
+type Query {
+  user: User
+}
+
 type User {
   userId: Int
   posts(offset: Int!, limit: Int!, countNewLimit: Int, orderings: [PaginationOrdering!]!, offsetRelativeTo: String): PostPagination! @sql
@@ -40,10 +44,6 @@ type User {
 
 type Post {
   postId: Int
-}
-
-type Query {
-  user: User
 }
 
 type PaginationInfo {

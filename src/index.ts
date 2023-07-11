@@ -2,13 +2,14 @@ import {
   mapSchema,
   getDirectives,
   MapperKind,
-  printSchemaWithDirectives,
+  IResolvers,
 } from '@graphql-tools/utils'
 import {
   wrapSchema,
   TransformObjectFields,
   TransformInterfaceFields,
 } from '@graphql-tools/wrap'
+import { stitchSchemas } from '@graphql-tools/stitch'
 import {
   GraphQLSchema,
   GraphQLNamedType,
@@ -33,7 +34,7 @@ import {
   GraphQLInputField,
   GraphQLInputFieldConfig,
 } from 'graphql'
-import { makeExecutableSchema, mergeSchemas } from '@graphql-tools/schema'
+import { mergeSchemas } from '@graphql-tools/schema'
 
 type DirectableGraphQLObject =
   | GraphQLSchema
@@ -62,7 +63,10 @@ export default function paginationDirective(
 ) {
   return {
     paginationDirectiveTypeDefs: `directive @${directiveName} on FIELD_DEFINITION`,
-    paginationDirectiveTransform: (schema: GraphQLSchema) => {
+    paginationDirectiveTransform: (
+      schema: GraphQLSchema,
+      resolvers: IResolvers<any, any> | IResolvers<any, any>[]
+    ) => {
       const newTypeDefs: string[] = []
       const foundTypes: { [name: string]: GraphQLNamedType } = {}
       const paginationTypes: { [name: string]: boolean } = {}
@@ -202,12 +206,19 @@ export default function paginationDirective(
           return fieldConfig
         } else return undefined
       }
-      schema = wrapSchema({
-        schema,
-        transforms: [
-          new TransformInterfaceFields(transformer),
-          new TransformObjectFields(transformer),
+      // @ts-ignore
+      schema = stitchSchemas({
+        subschemas: [
+          {
+            schema,
+            transforms: [
+              new TransformInterfaceFields(transformer),
+              new TransformObjectFields(transformer),
+            ],
+          },
         ],
+        resolvers,
+        mergeDirectives: true,
       })
 
       return schema

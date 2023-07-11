@@ -1,12 +1,6 @@
 import test from 'boxtape'
-import paginationDirective from '../lib/index.js'
 import pagination from '../lib/resolver.js'
 import sinon from 'sinon'
-
-const {
-  paginationDirectiveTypeDefs,
-  paginationDirectiveTransform,
-} = paginationDirective('pagination')
 
 const posts = []
 

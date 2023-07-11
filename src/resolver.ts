@@ -284,7 +284,8 @@ export default function resolver<T>(
   r: WrappedResolver<T>
 ): IFieldResolver<any, any, PaginationArgs, Promise<PaginationResult<T>>> {
   return async (parent, args: PaginationArgs, ctx, info) => {
-    if (!args.orderings[0]) {
+    // console.log('info', JSON.stringify(info.operation.selectionSet, null, '  '))
+    if (!args?.orderings?.[0]) {
       // There has to be at least 1 ordering
       // return emptyResult
       throw Error('There must be at least one ordering.')
