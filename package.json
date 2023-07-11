@@ -8,7 +8,7 @@
     "./resolver": "./lib/resolver.js"
   },
   "license": "MIT",
-  "description": "Similar to graphql-directive-connection, but simpler.",
+  "description": "Manipulates SQL clauses to provide pagination ability to fields in GraphQL. Easy to integrate.",
   "keywords": [
     "graphql",
     "connection",

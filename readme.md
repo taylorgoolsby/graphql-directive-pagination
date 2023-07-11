@@ -1,6 +1,6 @@
 # graphql-directive-pagination
 
-> Provides pagination ability to fields in GraphQL.
+> Manipulates SQL clauses to provide pagination ability to fields in GraphQL. Easy to integrate.
 
 ![A nice picture of how pagination works](./images/Pagination.png)
 
