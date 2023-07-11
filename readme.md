@@ -2,7 +2,7 @@
 
 > Manipulates SQL clauses to provide pagination ability to fields in GraphQL. Easy to integrate.
 
-![A nice picture of how pagination works](./images/Pagination.png)
+![A nice picture of how pagination works](./images/pagination-outline.png)
 
 This is similar to Relay's `@connection` directive (see [graphql-directive-connection](https://www.npmjs.com/package/graphql-directive-connection)). The difference is the use of `limit` and `offset` rather than `after, first, before, last`. The reason for this change is to integrate better with the LIMIT and OFFSET clauses in MySQL and PostgresQL.
 
