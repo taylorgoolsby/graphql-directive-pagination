@@ -35,6 +35,9 @@ import {
   GraphQLInputFieldConfig,
 } from 'graphql'
 import { mergeSchemas } from '@graphql-tools/schema'
+import { default as _resolver } from './resolver.js'
+
+export const pagination = _resolver
 
 type DirectableGraphQLObject =
   | GraphQLSchema

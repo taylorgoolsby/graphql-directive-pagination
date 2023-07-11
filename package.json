@@ -3,9 +3,11 @@
   "version": "1.0.4",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "type": "module",
   "exports": {
     ".": "./lib/index.js",
-    "./resolver": "./lib/resolver.js"
+    "./resolver": "./lib/resolver.js",
+    "./package.json": "./package.json"
   },
   "license": "MIT",
   "description": "Manipulates SQL clauses to provide pagination ability to fields in GraphQL. Easy to integrate.",
@@ -16,7 +18,6 @@
     "pagination",
     "directive"
   ],
-  "type": "module",
   "repository": "git@github.com:taylrun/graphql-directive-pagination.git",
   "author": "Taylor Goolsby <14286600+taylrun@users.noreply.github.com>",
   "scripts": {
