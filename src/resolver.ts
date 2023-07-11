@@ -21,12 +21,12 @@ type Ordering = {
 
 type Clauses = {
   mysql: {
-    where: string
+    where?: string
     orderBy: string
     limit: string
   }
   postgres: {
-    where: string
+    where?: string
     orderBy: string
     offset: string
     limit: string

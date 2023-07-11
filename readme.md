@@ -96,8 +96,8 @@ type PaginationInfo {
   nextOffsetRelativeTo: String
 }
 
-type PostPagination {
-  node: [Post!]!
+input PostPagination {
+  nodes: [Post!]!
   info: PaginationInfo!
 }
 
@@ -191,9 +191,44 @@ This package will then manipulate the clauses to do things such as:
 2. Once an `offsetRelativeTo` is determined, it performs one SELECT to get paginated rows, I.E. rows associated with a non-negative offset.
 3. Also using `offsetRelativeTo`, it performs another SELECT to lookahead and check if there are any rows associated with a negative offset. This is used to determine `countNew`.
 
-If you do not use MySQL or Postgres, you can still use this package. The general rules regarding `args.clauses` are:
+If you do not use MySQL or Postgres, you can still use this package. The general rules regarding `args.clauses` usage are:
 1. If you use `args.clauses`, then the `pagination` function expects your resolver to return an array which has already had sort, offset, and limit applied to it.
-2. If you do not use `args.clauses`, then `pagination` expects an array which has not yet been sorted, offsetted, or limited. `pagination` will perform those operations on the array. 
+2. If you do not use `args.clauses`, then `pagination` expects an array which has not yet been sorted, offsetted, or limited. `pagination` will perform those operations on the array.
+
+`args.clauses` has been SQL escaped/sanitized using `mysql.format`.
+
+Here is an example of how you should edit your SQL queries to integrate with this package:
+
+```js
+/*
+  `clauses` is passed in from the resolver's `args.clauses.mysql` or `args.clauses.postgres`.
+  
+  type Clauses = {
+    mysql: {
+      where?: string
+      orderBy: string
+      limit: string
+    }
+    postgres: {
+      where?: string
+      orderBy: string
+      offset: string
+      limit: string
+    }
+  }
+* */
+async function getPosts(userId: string, clauses: Clauses) {
+  const query = sql`
+    SELECT * FROM Posts
+    WHERE userId = ${userId}
+    ${clauses.where ? `AND ${clauses.where}` : ''} 
+    ORDER BY ${clauses.orderBy}
+    LIMIT ${clauses.limit};
+  `
+  const rows = await db.all(query)
+  return rows
+}
+```
 
 ## Client-Side Events
 
