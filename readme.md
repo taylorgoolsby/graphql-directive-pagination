@@ -211,7 +211,7 @@ If you do not use MySQL or Postgres, you can still use this package. The `pagina
 1. If you use `args.clauses`, then the `pagination` function expects your resolver to return an array which has already had sort, offset, and limit applied to it.
 2. If you do not use `args.clauses`, then `pagination` expects an array which has not yet been sorted, offsetted, or limited. `pagination` will perform those operations on the returned array.
 
-`args.clauses` has been SQL escaped/sanitized using `mysql.format`.
+Both `args.clauses.mysql` and `args.clauses.postgres` have been SQL escaped/sanitized using `mysql.format`.
 
 Here is an example of how you should edit your SQL queries to integrate with this package:
 
