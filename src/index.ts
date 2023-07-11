@@ -142,7 +142,7 @@ export default function paginationDirective(
         newTypeDefs.push(`
           type PaginationInfo {
             hasMore: Boolean!
-            hasNew: Int!
+            hasNew: Boolean!
             countNew: Int!
             nextOffset: Int!
             nextOffsetRelativeTo: String!

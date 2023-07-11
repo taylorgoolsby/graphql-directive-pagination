@@ -48,7 +48,7 @@ type Post {
 
 type PaginationInfo {
   hasMore: Boolean!
-  hasNew: Int!
+  hasNew: Boolean!
   countNew: Int!
   nextOffset: Int!
   nextOffsetRelativeTo: String!
