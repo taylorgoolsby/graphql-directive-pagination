@@ -8,14 +8,14 @@ This is similar to Relay's `@connection` directive (see [graphql-directive-conne
 
 In addition to a `@pagination` directive, this package is also bundled with JS functions to help you build the GraphQL resolvers that go along with your `@pagination` fields. 
 
-## How to Use
+# Instructions
 
 Here are instructions on how to use this package to implement a paginated table or an infinite scroller.
 
 It also supports scenarios where the data source has inserted new rows or documents while the client has already
 started paginating/scrolling.
 
-### Server-Side: TypeDefs
+## Server-Side: TypeDefs
 
 These are the changes you need to make to your existing typeDefs.
 
@@ -53,13 +53,16 @@ const typeDefs = `
   }
 `
 
+const resolvers = {}
 let schema = makeExecutableSchema({
   typeDefs,
   // You can also use this:
   // typeDefs: [typeDefs, paginationDirectiveTypeDefs]
+  resolvers
 })
 
-schema = paginationDirectiveTransform(schema)
+// You must also pass your resolvers into the transform:
+schema = paginationDirectiveTransform(schema, resolvers)
 
 export default schema
 ```
@@ -74,11 +77,13 @@ These types will be added to your schema:
 ```graphql
 type PaginationInfo {
   # Tells whether or not there are more rows available.
-  # You can get these rows by performing a new query after incrementing your client-side offset.
+  # You can get these rows by performing a new query after incrementing 
+  # your client-side offset.
   # E.G. offset += limit
   hasMore: Boolean!
   
-  # Tells whether or not there are new rows available. "New rows" are not the same as "more rows".
+  # Tells whether or not there are new rows available. "New rows" are not
+  # the same as "more rows".
   # See the section on New Rows.
   hasNew: Int!
   
@@ -89,13 +94,17 @@ type PaginationInfo {
   # offsetRelativeTo: $offsetRelativeTo
   countNew: Int!
   
-  # If the server responds with values for nextOffset and nextOffsetRelativeTo,
-  # the client must accept these values.
-  nextOffset: Int
-  # FYI, nextOffsetRelativeTo is equal to `JSON.stringify(node[0][orderings[0].index])`.
-  # It is denormalized into the response so that the server is authoritative 
-  # and there is less work to be done for those using this package.
-  nextOffsetRelativeTo: String
+  # The client should always accept these values.
+  # E.G. onResponse:
+  # offset = nextOffset
+  # offsetRelativeTo = nextOffsetRelativeTo
+  nextOffset: Int!
+  # FYI, nextOffsetRelativeTo is equal to 
+  # `JSON.stringify(node[0][orderings[0].index])`.
+  # It is denormalized into the response so that the server is 
+  # authoritative and there is less work to be done for those 
+  # using this package.
+  nextOffsetRelativeTo: String!
 }
 
 input PostPagination {
@@ -112,19 +121,27 @@ input PaginationOrdering {
 In addition, the User type has been modified:
 
 ```graphql
+# Before:
+type User {
+  posts: [Post!]! @pagination
+}
+
+# After:
 type User {
   posts(
     # offset can be negative. See the section on New Rows.
     offset: Int!,
     limit: Int!, 
-    # countNewLimit is used when checking how many new rows there are. See the section on New Rows.
+    # countNewLimit is used when checking how many new rows there are. 
+    # See the section on New Rows.
     countNewLimit: Int,
     # At least 1 ordering should be included.
     orderings: [PaginationOrdering!]!, 
-    # After the initial page load, the server will respond with `nextOffsetRelativeTo`.
+    # After the initial page load, the server will respond with
+    # `nextOffsetRelativeTo`.
     # This value should be echoed back in subsequent requests.
     offsetRelativeTo: String
-  ): PostPagination
+  ): PostPagination!
 }
 ```
 
@@ -167,6 +184,7 @@ export const typeDefs = `
 export const resolvers = {
   User: {
     posts: pagination(async (user, args, ctx, info): Promise<Array<Post>> => {
+      // See the SQL Queries section for instructions on how to use `args.clauses.mysql`.
       const posts = await PostDB.getByUserId(user.userId, args.clauses.mysql)
       return posts
     }),
@@ -174,17 +192,11 @@ export const resolvers = {
 }
 ```
 
-The `pagination` function takes in your original resolver and provides it with `args.clauses` and converts the return value into a `PaginationPost`.
-
-You don't have to use `args.clauses`, but you can use `args.clauses.mysql` or `args.clauses.postgres` to build a SQL query which performs the sorting, offset and limit in the database. This offloads work from the Node server so that the Node server can remain lightweight and performant.
-
-The `pagination` function can detect if you use `args.clauses`, and it will behave differently dependeing on if you do or do not:
-* If you use `args.clauses`, the `pagination` function will expect the array returned by your resolver to have already been sorted, offsetted, and limited. 
-* If you do not use `args.clauses`, the `pagination` function will expect the array returned by your resolver to not be sorted, offsetted, or limited, so it will perform sorting, offsetting, and limiting on the returned array.
+The `pagination` function takes in your original resolver and provides it with `args.clauses` and converts the return value into a `PaginationPost`. You do not have to use `args.clauses`. See the [SQL Queries](#sql-queries) section for more details. 
 
 ## SQL Queries
 
-This package is primarily designed for usage with MySQL or Postgres. By performing sorting, offset, and limit in the database,
+This package is primarily designed for usage with MySQL or Postgres. By performing sorting, offsetting, and limiting in the database,
 work is offloaded from the Node server so that it remains lightweight and performant.
 
 If you use these, you can pass `args.clauses.mysql` or `args.clauses.postgres` into your SQL query builder.
@@ -193,9 +205,11 @@ This package will then manipulate the clauses to do things such as:
 2. Once an `offsetRelativeTo` is determined, it performs one SELECT to get paginated rows, I.E. rows associated with a non-negative offset.
 3. Also using `offsetRelativeTo`, it performs another SELECT to lookahead and check if there are any rows associated with a negative offset. This is used to determine `countNew`.
 
-If you do not use MySQL or Postgres, you can still use this package. The general rules regarding `args.clauses` usage are:
+For more information on the different between positive and negative offset rows, see the section on [New Rows](#new-rows).
+
+If you do not use MySQL or Postgres, you can still use this package. The `pagination` function can detect if you use `args.clauses`, and it will behave differently dependeing on if you do or do not:
 1. If you use `args.clauses`, then the `pagination` function expects your resolver to return an array which has already had sort, offset, and limit applied to it.
-2. If you do not use `args.clauses`, then `pagination` expects an array which has not yet been sorted, offsetted, or limited. `pagination` will perform those operations on the array.
+2. If you do not use `args.clauses`, then `pagination` expects an array which has not yet been sorted, offsetted, or limited. `pagination` will perform those operations on the returned array.
 
 `args.clauses` has been SQL escaped/sanitized using `mysql.format`.
 
@@ -203,7 +217,8 @@ Here is an example of how you should edit your SQL queries to integrate with thi
 
 ```js
 /*
-  `clauses` is passed in from the resolver's `args.clauses.mysql` or `args.clauses.postgres`.
+  `clauses` is passed in from the resolver's `args.clauses.mysql` or
+  `args.clauses.postgres`.
   
   type Clauses = {
     mysql: {
@@ -236,16 +251,19 @@ async function getPosts(userId: string, clauses: Clauses) {
 
 In the client, you might have these three queries for the three kinds of events that can happen:
 * Initial Page Load Event
-  * When the page first loads. The client might start pagination on a non-zero page/offset.
+  * When the page first loads. This package supports non-zero offsets on page load so that pagination can start on a specific starting page.
+  * The server interprets requests which have `offsetRelativeTo: null` as a page load. It will establish the `offsetRelativeTo` and return it in the response as `nextOffsetRelativeTo`.
 * Load More / Scroll Down Event
-  * After the initial page load, `offsetRelativeTo` has been established, and now the client can load pages associated with a positive `offset.
+  * After the initial page load, `offsetRelativeTo` has been established, and now the client can load pages associated with positive offsets.
 * Load New / Scroll Up Event
   * When new rows are added to the database, they might be associated with a negative offset, so the client needs this event to get these new rows. 
+
+See the picture at the top of this document for reference.
 
 Here are what the queries for these events look like:
 
 ```graphql
-query InitialPageLoad (
+query PageLoad (
   # startingOffset = startingPage * pageSize
   $startingOffset: Int!
   $pageSize: Int!
@@ -253,8 +271,13 @@ query InitialPageLoad (
 ) {
   user {
     id
-    posts(offset: $startingOffset, limit: $pageSize, orderings: $orderings) {
-      node {
+    posts(
+      offset: $startingOffset, 
+      limit: $pageSize, 
+      orderings: $orderings
+      # notice offsetRelativeTo is blank
+    ) {
+      nodes {
         id
       }
       info {
@@ -275,13 +298,19 @@ query LoadMore (
   $pageOffset: Int!
   $pageSize: Int!
   $orderings: [PaginationOrdering!]!
-  # The client must pass values through JSON.stringify() before assigning to them offsetRelativeTo.
+  # The client should echo back the value of nextOffsetRelativeTo
+  # which the server provided in the PageLoad response.
   $offsetRelativeTo: String!
 ) {
   user {
     id
-    posts(offset: $pageOffset, limit: $pageSize, orderings: $orderings, offsetRelativeTo: $offsetRelativeTo) {
-      node {
+    posts(
+      offset: $pageOffset, 
+      limit: $pageSize, 
+      orderings: $orderings, 
+      offsetRelativeTo: $offsetRelativeTo
+    ) {
+      nodes {
         id
       }
       info {
@@ -301,13 +330,19 @@ query LoadNew (
   $minusCountNew: Int!
   $countNew: Int!
   $orderings: [PaginationOrdering!]!
-  # The client must pass values through JSON.stringify() before assigning to them offsetRelativeTo.
+  # The client should echo back the value of nextOffsetRelativeTo
+  # which the server provided in the PageLoad response.
   $offsetRelativeTo: String!
 ) {
   user {
     id
-    posts(offset: $minusCountNew, limit: $countNew, orderings: $orderings, offsetRelativeTo: $offsetRelativeTo) {
-      node {
+    posts(
+      offset: $minusCountNew, 
+      limit: $countNew, 
+      orderings: $orderings, 
+      offsetRelativeTo: $offsetRelativeTo
+    ) {
+      nodes {
         id
       }
       info {
@@ -335,7 +370,7 @@ When the page first loads, assuming the pagination is starting on page 0, the cl
 `offsetRelativeTo`, so it sends a query with `offsetRelativeTo: null`. The server should determine an `offsetRelativeTo`
 and then send this back to the client using `nextOffsetRelativeTo`.
 
-Once the client has established an `offsetRelativeTo`, it is possible for the database to insert more rows which are
+Once the client has established an `offsetRelativeTo`, it is possible for the database to insert more rows after the client has started paginating, and these are
 associated with a negative offset.
 
 In the example of a paginated table, a negative offset would mean going to a page before the first page. There are new
@@ -347,9 +382,9 @@ So this is what is meant by new rows and negative offset.
 
 Instead of doing a full page refresh, it is possible to gracefully show these new rows to the end user.
 
-A naive way to do this would be to repeat what is done on initial page load. 
-Send `offsetRelativeTo: null` to the server, just as the client does on initial page load.
-The server will respond with `nextOffsetRelativeTo` and `nextOffset` which the client should accept.
+A naive way to do this would be to repeat what is done on initial page load.
+The client could send `offsetRelativeTo: null` to the server, emulating what it does on initial page load.
+The server would respond with a new `nextOffsetRelativeTo` and `nextOffset` which the client should accept.
 
 This is naive because the `limit` in the request can cause there to be a gap in results. For example, if there are
 35 new rows, and the client requests `limit: 10, offsetRelativeTo: null`, then the first 10 of those 35 rows will be
@@ -359,13 +394,13 @@ The server does respond with `countNew`, but a gap can still happen even if the 
 requests `limit: $countNew, offsetRelativeTo: null`.
 At first glance, this appears that it will get all the new rows so that there is no gap, 
 but the problem is that `countNew` is old information by the time the client sends it back up in the request's `limit`.
-`countNew` is reported every time the client ask for more rows, but the time between the last next page event and the
-load new rows event could be a long time.
+`countNew` is reported every time the client ask for more rows, but the time between the last `LoadMore` event and the
+`LoadNew` event could be a long time.
 
 In order to get new rows without any possibility of there being gaps in data, the client must not pass
 `offsetRelativeTo: null`. Instead, the client should keep `offsetRelativeTo` in the request as it does 
-for next page events, but instead, when handling load new rows events, it should pass in a negative `offset`.
-The server will flip the inequality in the WHERE clause and the sort directions in the ORDER BY clause in order to
+for `LoadMore` events, but instead, when handling `LoadNew` events, it should pass in a negative `offset`.
+The server will flip the inequality in the WHERE clause and flip the sort directions in the ORDER BY clause in order to
 get new rows relative to `offsetRelativeTo`. This avoids gaps.
 
 To recap, to get new rows, 
@@ -376,19 +411,17 @@ See the section on [Client-Side Events](#client-side-events) for an example of t
 ### How and when does the server compute `countNew`?
 
 If `offsetRelativeTo` is included in the request, it includes a WHERE statement in the SQL query. This is equivalent
-to cutting the database table into two partitions, rows above the WHERE statement's inequality, and rows below.
-The rows above are associated with a negative offset, and the rows below are associated with a non-negative offset.
+to cutting the database table into two partitions, rows above the WHERE statement's inequality, and rows below. See the image at the top of this document for reference. The rows above are associated with a negative offset, and the rows below are associated with a non-negative offset.
 
-By flipping the WHERE statement's inequality, the server can either of the two partitions, the negative offset rows or
+By flipping the WHERE statement's inequality, the server can SELECT either of the two partitions, the negative offset rows or
 the non-negative offset rows.
 
 So this is what this package does. It sends two SQL queries on every request which has `offsetRelativeTo`. It returns
-the positive offset rows (which has also been offsetted and limited in the database), 
-but returns the count of the negative offset rows.
+the positive offset rows but returns the count of the negative offset rows.
 
 When `offsetRelativeTo` is not included in the request, the server will use the first row, which is associated with
 offset 0, to obtain the `offsetRelativeTo`. To do this, it performs a SQL query without a WHERE statement, so,
-`countNew` must be 0.
+`countNew` must be 0 in requests with `offsetRelativeTo: null`.
 
 ### Limits on `countNew`
 
@@ -406,11 +439,11 @@ It cannot see new rows past the `limit`.
 (BTW, when asking for new rows, in addition to flipping the inequality in the WHERE clause, 
 the ORDER BY directions are also flipped.)
 
-Because of this usage of `limit`, the server response's `countNew` won't be greater than the request's `limit`.
+Because of this usage of `limit`, the server response's `countNew` won't be greater than the request's `limit`. This can impact your frontend display of `countNew`. In Twitter's example, they display "Show N New Tweets", where N displaying `countNew`. If the `limit` of your requests is your page size, then `countNew` would be limited to show a value at maximum equal to your page size.
 
 If you would like to override this default, then you can include `countNewLimit` in the request. `countNewLimit` will
-only be used in the SQL query for new rows, 
-and it will not affect the query for rows associated with a non-negative offset.
+only be used in the SQL query for counting new rows, 
+and it will not affect the query for rows associated with a non-negative offset. This allows you to display "Show N New Rows" to your end users where the maximum value N can take on is specified by `countNewLimit`. 
 
 ## Orderings
 
@@ -435,14 +468,16 @@ sort index and limit will run into this problem.
 
 One way to fix this is and return to deterministic behavior is to break ties by including more orderings in the
 `orderings` array. The primary column of your table is unique, so you could include this as a deterministic tie breaker
-in your `orderings`.
+in your `orderings`. Keep in mind, the first ordering in your `orderings` array is the primary sorting column, and is also used for determining `offsetRelativeTo`, so usually your tie breaker will not be the first ordering.
 
 Another solution, which is not determinitic, is to not worry about it by increasing the limit until your feel
 confident your application won't run into this issue.
 
 ## cacheControl
 
-By default, the `cacheControl` directives are not generated on Edge object types and inside connection fields which results in cache arguments being completely ignored.
-Enabling `defaultMaxAge` for all types/fields across your GraphQL implementation partially solve the problem, however it might not be the best options.
-It is possible to enable `cacheControl` directive support by passing a `useCacheControl: true` flag to `applyConnectionTransform` function.
-The package will then use the largest `maxAge` across the connection fields with custom types and apply it to `edges` and `pageInfo` fields along with the `Edge` type.
+This is a feature for those using Apollo GraphQL.
+
+By default, the `cacheControl` directives are not generated on Edge object types and inside pagination fields which results in cache arguments being completely ignored.
+Enabling `defaultMaxAge` for all types/fields across your GraphQL implementation partially solves the problem, however it might not be the best option.
+It is possible to enable the `cacheControl` directive support by passing a `useCacheControl: true` flag to the `paginationDirective` function.
+The package will then use the largest `maxAge` across the pagination fields with custom types and apply it to `nodes` and `info` fields.

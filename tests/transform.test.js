@@ -67,10 +67,12 @@ type PostPagination {
 })
 
 function runTest(t, typeDefs, expected) {
+  const resolvers = {}
   let schema = makeExecutableSchema({
     typeDefs: [paginationDirectiveTypeDefs, typeDefs],
+    resolvers
   })
-  schema = paginationDirectiveTransform(schema)
+  schema = paginationDirectiveTransform(schema, resolvers)
   const answer = printSchemaWithDirectives(schema)
 
   if (answer !== expected) {
