@@ -1,0 +1,73 @@
+{
+  "name": "graphql-directive-pagination",
+  "version": "1.0.0",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./resolver": "./lib/resolver.js"
+  },
+  "license": "MIT",
+  "description": "Similar to graphql-directive-connection, but simpler.",
+  "keywords": [
+    "graphql",
+    "connection",
+    "relay",
+    "pagination",
+    "directive"
+  ],
+  "type": "module",
+  "repository": "git@github.com:taylrun/graphql-directive-pagination.git",
+  "author": "Taylor Goolsby <14286600+taylrun@users.noreply.github.com>",
+  "scripts": {
+    "build": "rm -rf lib && tsc",
+    "format": "./node_modules/.bin/prettier --write 'src/**/*.{ts,tsx,js,jsx}'",
+    "lint": "./node_modules/.bin/tslint --fix 'src/**/*.{ts,tsx}'",
+    "test": "npm run build && boxtape tests/**/*.test.js",
+    "test-r": "npm run build && boxtape tests/resolver-with-clauses.test.js",
+    "test-s": "npm run build && boxtape tests/resolver-without-clauses.test.js",
+    "test-t": "npm run build && boxtape tests/transform.test.js",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run test",
+    "version": "git add -A src",
+    "postversion": "git push && git push --tags"
+  },
+  "peerDependencies": {
+    "graphql": "^16.7.1"
+  },
+  "dependencies": {
+    "@graphql-tools/schema": "^10.0.0",
+    "@graphql-tools/utils": "^10.0.3",
+    "@graphql-tools/wrap": "^10.0.0",
+    "mysql": "2.18.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.15.0",
+    "@babel/node": "^7.14.9",
+    "@babel/preset-env": "^7.15.0",
+    "@types/fs-extra": "^8.0.0",
+    "@types/graphql": "^14.5.0",
+    "@types/lodash.get": "^4.4.6",
+    "@types/node": "^14.17.9",
+    "@types/tape": "^5.6.0",
+    "@types/ws": "^7.4.7",
+    "boxtape": "^0.0.16",
+    "graphql": "^16.7.1",
+    "graphql-tag": "^2.12.6",
+    "husky": "^1.3.1",
+    "lint-staged": "^7.3.0",
+    "prettier": "^2.1.2",
+    "sinon": "^15.2.0",
+    "sqlite": "^4.2.1",
+    "sqlite3": "^5.1.6",
+    "ts-node": "^10.2.0",
+    "tslint": "^6.1.3",
+    "tslint-config-prettier": "^1.18.0",
+    "typescript": "^5.1.6"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  }
+}
