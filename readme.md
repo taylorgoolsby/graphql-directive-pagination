@@ -85,7 +85,9 @@ type PaginationInfo {
   # moreOffset is relative to nextOffsetRelativeTo.
   # It is the offset of the next non-negative row the client doesn't have yet.
   # If hasMore is false, moreOffset is still set to the next row so that the 
-  # client can make a LoadMore request after waiting some time. 
+  # client can make a LoadMore request after waiting some time.
+  # In most cases, the client should do `setOffset(moreOffset)` after each response
+  # in order to be prepared for a LoadMore event.
   moreOffset: Int!
   
   # Tells whether or not there are new rows available. "New rows" are not
