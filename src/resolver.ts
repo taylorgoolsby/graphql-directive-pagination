@@ -60,10 +60,10 @@ function escape(template: string, values: any[]): string {
   return mysql.format(template, values)
 }
 
-function getNegativeOffsetClauses(
+function getNegativeOffsetArgs(
   args: PaginationArgs,
   offsetRelativeTo: any
-): Clauses {
+): PaginationArgs {
   const offsetRelativeToUnix =
     offsetRelativeTo instanceof Date
       ? Math.round(offsetRelativeTo.valueOf() / 1000)
@@ -78,13 +78,14 @@ function getNegativeOffsetClauses(
   )
   const desc = args.orderings[0].direction.toUpperCase() === 'DESC'
 
+  const offset = 0
   // Only lookahead by this limit to prevent case where there are
   // hundred of new rows and then node server has to process a lot of rows.
   // By default, this limit is determined by args.limit, but the client can override this limit just for this
   // special case using countNewLimit
   const limit = args.countNewLimit || args.limit
 
-  const result = {
+  const clauses = {
     mysql: {
       // @ts-ignore
       where: offsetRelativeToUnix
@@ -98,7 +99,7 @@ function getNegativeOffsetClauses(
           ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
-      limit: escape('0, ?', [limit]),
+      limit: escape('?, ?', [offset, limit]),
     },
     postgres: {
       // @ts-ignore
@@ -113,13 +114,13 @@ function getNegativeOffsetClauses(
           ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
-      offset: '0',
+      offset: escape('?', [offset]),
       limit: escape('?', [limit]),
     },
   }
 
   let used = false
-  return new Proxy(result, {
+  const proxyClauses = new Proxy(clauses, {
     get: (target, prop) => {
       if (prop === usedSymbol) {
         return used
@@ -132,12 +133,20 @@ function getNegativeOffsetClauses(
       return target[prop]
     },
   })
+
+  return {
+    ...args,
+    offset,
+    limit,
+    clauses: proxyClauses,
+    offsetRelativeTo: JSON.stringify(offsetRelativeTo),
+  }
 }
 
-function getPositiveOffsetClauses(
+function getPositiveOffsetArgs(
   args: PaginationArgs,
   offsetRelativeTo: any
-): Clauses {
+): PaginationArgs {
   const offsetRelativeToUnix =
     offsetRelativeTo instanceof Date
       ? Math.round(offsetRelativeTo.valueOf() / 1000)
@@ -154,7 +163,7 @@ function getPositiveOffsetClauses(
 
   const desc = args.orderings[0].direction.toUpperCase() === 'DESC'
 
-  const result = {
+  const clauses = {
     mysql: {
       // @ts-ignore
       where: offsetRelativeToUnix
@@ -189,7 +198,7 @@ function getPositiveOffsetClauses(
   }
 
   let used = false
-  return new Proxy(result, {
+  const proxyClauses = new Proxy(clauses, {
     get: (target, prop) => {
       if (prop === usedSymbol) {
         return used
@@ -202,9 +211,17 @@ function getPositiveOffsetClauses(
       return target[prop]
     },
   })
+
+  return {
+    ...args,
+    offset,
+    limit,
+    clauses: proxyClauses,
+    offsetRelativeTo: JSON.stringify(offsetRelativeTo),
+  }
 }
 
-function getRootClauses(args: PaginationArgs): Clauses {
+function getRootArgs(args: PaginationArgs): PaginationArgs {
   // @ts-ignore
   const orderBy = args.orderings.map((o) =>
     escape(`?? ${o.direction.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}`, [
@@ -212,7 +229,7 @@ function getRootClauses(args: PaginationArgs): Clauses {
     ])
   )
 
-  const result = {
+  const clauses = {
     mysql: {
       // @ts-ignore
       where: '',
@@ -231,7 +248,7 @@ function getRootClauses(args: PaginationArgs): Clauses {
   }
 
   let used = false
-  return new Proxy(result, {
+  const proxyClauses = new Proxy(clauses, {
     get: (target, prop) => {
       if (prop === usedSymbol) {
         return used
@@ -244,6 +261,14 @@ function getRootClauses(args: PaginationArgs): Clauses {
       return target[prop]
     },
   })
+
+  return {
+    ...args,
+    offset: 0,
+    limit: 1,
+    clauses: proxyClauses,
+    offsetRelativeTo: JSON.stringify(null),
+  }
 }
 
 async function determineOffsetRelativeTo<T>(
@@ -253,16 +278,8 @@ async function determineOffsetRelativeTo<T>(
   ctx,
   info
 ): Promise<OffsetRelativeTo> {
-  const rootClauses = getRootClauses(args)
-  const nodes = await memoR(
-    parent,
-    {
-      ...args,
-      clauses: rootClauses,
-    },
-    ctx,
-    info
-  )
+  const rootArgs = getRootArgs(args)
+  const nodes = await memoR(parent, rootArgs, ctx, info)
 
   if (!nodes || !Array.isArray(nodes)) {
     throw new Error('Expected resolver to return an array.')
@@ -312,7 +329,7 @@ async function determineHasMore<T>(
   // After this response, it will be the client's countLoaded relative to the original offsetRelativeTo:
   const nextCountLoaded = countLoaded + diff
 
-  const clauses = getPositiveOffsetClauses(
+  const positiveArgs = getPositiveOffsetArgs(
     {
       ...args,
       offset: nextCountLoaded,
@@ -320,16 +337,7 @@ async function determineHasMore<T>(
     },
     determinedOffsetRelativeTo
   )
-  const nodes = await memoR(
-    parent,
-    {
-      ...args,
-      clauses,
-      offsetRelativeTo: JSON.stringify(determinedOffsetRelativeTo),
-    },
-    ctx,
-    info
-  )
+  const nodes = await memoR(parent, positiveArgs, ctx, info)
   return {
     hasMore: !!nodes.length,
     moreOffsetRelativeToOrignal: nextCountLoaded,
@@ -398,10 +406,10 @@ function makeMemoizedResolver<T>(r: WrappedResolver<T>): WrappedResolver<T> {
   }
 }
 
-function noClauseOffsetAndLimit(
-  noClauseNodes: any[],
+function noClauseOffsetAndLimit<T>(
+  noClauseNodes: T[],
   args: PaginationArgs
-): any[] {
+): T[] {
   // Pretend to be the database, doing the where, offset and limit on an already sorted array.
   const type = args.clauses[typeSymbol]
 
@@ -421,13 +429,16 @@ function noClauseOffsetAndLimit(
   if (offsetRootIndex === -1) {
     offsetRootIndex = 0
   }
-
   const offsetIndex = offsetRootIndex + args.offset
-  // To be consistent with the algorithm for negative offsets with clauses,
-  // the limitedNodes does not include rows which are equal to or come after the offsetRootIndex.
+
   if (type === 'negative') {
-    const limit = Math.min(args.limit, Math.abs(args.offset))
-    const limitedNodes = noClauseNodes.slice(offsetIndex, offsetIndex + limit)
+    // To be consistent with the algorithm for when clauses are used,
+    // this function should return all rows associated with a negative offset
+    // according to the args.offset and args.limit.
+    const limitedNodes = noClauseNodes.slice(
+      Math.max(offsetIndex - args.limit, 0),
+      offsetIndex
+    )
     return limitedNodes.reverse()
   } else {
     const limitedNodes = noClauseNodes.slice(
@@ -479,28 +490,11 @@ export default function resolver<T>(
 
     // Do the first resolver call to determine if clauses are being used or not.
     if (args.offset < 0) {
-      const injectedArgs: PaginationArgs = {
-        ...args,
-        clauses: getNegativeOffsetClauses(args, offsetRelativeTo),
-        offsetRelativeTo: JSON.stringify(offsetRelativeTo),
-      }
-      const nodes = await memoR(parent, injectedArgs, ctx, info)
-
-      console.log('negative nodes', nodes)
-      // nodes [ { id: 9, dateCreated: 9 }, { id: 8, dateCreated: 8 } ]
-      /*
-
-      nodes [
-        { id: 9, userId: 0, dateCreated: 9 },
-        { id: 8, userId: 0, dateCreated: 8 }
-      ]
-      * */
+      const negativeArgs = getNegativeOffsetArgs(args, offsetRelativeTo)
+      const nodes = await memoR(parent, negativeArgs, ctx, info)
 
       // The nodes returned from negativeOffsetClauses is reversed.
       const startIndex = nodes.length + args.offset
-      console.log('nodes.length', nodes.length)
-      console.log('args.offset', args.offset)
-      console.log('startIndex', startIndex)
       const slicedNodes = nodes
         .reverse()
         .slice(startIndex, startIndex + args.limit)
@@ -538,32 +532,13 @@ export default function resolver<T>(
 
       return result
     } else {
-      const nodes = await memoR(
-        parent,
-        {
-          ...args,
-          clauses: getPositiveOffsetClauses(args, offsetRelativeTo),
-          offsetRelativeTo: JSON.stringify(offsetRelativeTo),
-        },
-        ctx,
-        info
-      )
-
-      console.log('positive nodes', nodes)
+      // args.offset >= 0
+      const positiveArgs = getPositiveOffsetArgs(args, offsetRelativeTo)
+      const nodes = await memoR(parent, positiveArgs, ctx, info)
 
       // Get the count of rows associated with negative offset as countNew:
-      const negativeNodes = await memoR(
-        parent,
-        {
-          ...args,
-          clauses: getNegativeOffsetClauses(args, offsetRelativeTo),
-          offsetRelativeTo: JSON.stringify(offsetRelativeTo),
-        },
-        ctx,
-        info
-      )
-
-      console.log('negativeNodes', negativeNodes)
+      const negativeArgs = getNegativeOffsetArgs(args, offsetRelativeTo)
+      const negativeNodes = await memoR(parent, negativeArgs, ctx, info)
 
       const { hasMore, moreOffsetRelativeToOrignal } = await determineHasMore(
         memoR,
