@@ -523,7 +523,7 @@ test('load new request', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit: 2, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 11, 'row 11 found')
   t.equal(res.nodes[1].id, 10, 'row 10 found')
@@ -634,7 +634,7 @@ test('load new request while db added new rows', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit: 2, orderings, offsetRelativeTo, countNewLimit: 4})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 13, 'row 13 found')
   t.equal(res.nodes[1].id, 12, 'row 12 found')
@@ -706,4 +706,50 @@ test('final load more request (has more false)', async (t) => {
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+})
+
+test('final load new request', async (t) => {
+  const callSpy = sinon.spy()
+
+  const wrappedResolver = pagination(async (parent, args) => {
+    callSpy()
+
+    t.equal(args.offset, -2, 'offset arg')
+    t.equal(args.limit, 2, 'limit arg')
+    t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
+    if (callSpy.callCount === 1) {
+      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'mysql where arg, getNegativeRows call')
+      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
+      t.equal(args.clauses.mysql.limit, '0, 4', 'mysql limit arg, getNegativeRows call')
+
+      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'postgres where arg, getNegativeRows call')
+      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
+      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
+      t.equal(args.clauses.postgres.limit, '4', 'postgres limit arg, getNegativeRows call')
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 2, 'getNegativeRows finds rows')
+      t.equal(rows[0].id, 14, 'row 14 is new')
+      t.equal(rows[1].id, 15, 'row 15 is new')
+      return rows
+    }
+  })
+
+  const tempOffset = offset
+  offset = -lastRes.info.countNew
+  limit = lastRes.info.countNew
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4})
+  t.equal(res.nodes.length, 2, 'limit respected')
+  t.equal(res.nodes[0].id, 15, 'row 15 found')
+  t.equal(res.nodes[1].id, 14, 'row 14 found')
+  t.equal(res.info.hasMore, true, 'hasMore true')
+  t.equal(res.info.hasNew, false, 'hasNew false')
+  t.equal(res.info.countNew, 0, 'countNew 2')
+  t.equal(res.info.nextOffset, 0, 'nextOffset 2')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(15), 'nextOffsetRelativeTo reset')
+  t.equal(callSpy.callCount, 1, 'one call was made')
+  offset = res.info.nextOffset
+  offsetRelativeTo = res.info.nextOffsetRelativeTo
+  offset = tempOffset + lastRes.info.countNew
+  lastRes = res
 })

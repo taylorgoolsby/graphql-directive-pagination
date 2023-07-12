@@ -244,7 +244,7 @@ test('load new request', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit: 2, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 11, 'row 11 found')
   t.equal(res.nodes[1].id, 10, 'row 10 found')
@@ -303,7 +303,7 @@ test('load new request while db added new rows', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit: 2, orderings, offsetRelativeTo, countNewLimit: 4})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 13, 'row 13 found')
   t.equal(res.nodes[1].id, 12, 'row 12 found')
