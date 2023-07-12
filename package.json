@@ -25,6 +25,7 @@
     "format": "./node_modules/.bin/prettier --write 'src/**/*.{ts,tsx,js,jsx}'",
     "lint": "./node_modules/.bin/tslint --fix 'src/**/*.{ts,tsx}'",
     "test": "npm run build && boxtape tests/**/*.test.js",
+    "test-q": "npm run build && boxtape tests/query.test.js",
     "test-r": "npm run build && boxtape tests/resolver-with-clauses.test.js",
     "test-s": "npm run build && boxtape tests/resolver-without-clauses.test.js",
     "test-t": "npm run build && boxtape tests/transform.test.js",

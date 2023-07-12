@@ -128,7 +128,7 @@ const query = gql`
           hasMore
           hasNew
           countNew
-          nextOffset
+          moreOffset
           nextOffsetRelativeTo
         }
       }
@@ -153,7 +153,8 @@ const res = await fetch('http://localhost:55474/graphql', {
 const data = await res.json()
 
 test('end-to-end query', (t) => {
-  t.equals(JSON.stringify(data), `{"data":{"user":{"id":0,"posts":{"nodes":[{"id":9,"dateCreated":9},{"id":8,"dateCreated":8}],"info":{"hasMore":true,"hasNew":false,"countNew":0,"nextOffset":0,"nextOffsetRelativeTo":"9"}}}}}`, 'query output')
+  console.log('JSON.stringify(data)', JSON.stringify(data))
+  t.equals(JSON.stringify(data), `{"data":{"user":{"id":0,"posts":{"nodes":[{"id":9,"dateCreated":9},{"id":8,"dateCreated":8}],"info":{"hasMore":true,"hasNew":false,"countNew":0,"moreOffset":2,"nextOffsetRelativeTo":"9"}}}}}`, 'query output')
 })
 
 server.close()

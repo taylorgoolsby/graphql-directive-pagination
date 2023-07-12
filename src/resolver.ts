@@ -9,7 +9,7 @@ export type PaginationResult<T> = {
     hasMore: boolean
     hasNew: boolean
     countNew: number
-    nextOffset: number
+    moreOffset: number
     nextOffsetRelativeTo: string | null
   }
 }
@@ -47,6 +47,9 @@ export interface PaginationArgs {
 type WrappedResolver<T> = IFieldResolver<any, any, PaginationArgs, Promise<T[]>>
 
 type OffsetRelativeTo = string | number | Date | null
+
+const usedSymbol = Symbol('used')
+const typeSymbol = Symbol('type')
 
 function escape(template: string, values: any[]): string {
   // This relies on the fact that for our use cases,
@@ -118,8 +121,11 @@ function getNegativeOffsetClauses(
   let used = false
   return new Proxy(result, {
     get: (target, prop) => {
-      if (prop === '__used') {
+      if (prop === usedSymbol) {
         return used
+      }
+      if (prop === typeSymbol) {
+        return 'negative'
       }
       used = true
       // @ts-ignore
@@ -185,8 +191,11 @@ function getPositiveOffsetClauses(
   let used = false
   return new Proxy(result, {
     get: (target, prop) => {
-      if (prop === '__used') {
+      if (prop === usedSymbol) {
         return used
+      }
+      if (prop === typeSymbol) {
+        return 'positive'
       }
       used = true
       // @ts-ignore
@@ -224,8 +233,11 @@ function getRootClauses(args: PaginationArgs): Clauses {
   let used = false
   return new Proxy(result, {
     get: (target, prop) => {
-      if (prop === '__used') {
+      if (prop === usedSymbol) {
         return used
+      }
+      if (prop === typeSymbol) {
+        return 'root'
       }
       used = true
       // @ts-ignore
@@ -234,79 +246,53 @@ function getRootClauses(args: PaginationArgs): Clauses {
   })
 }
 
-async function determineOffsetRelativeToOrNodes<T>(
+async function determineOffsetRelativeTo<T>(
+  memoR: WrappedResolver<T>,
   parent,
   args,
   ctx,
-  info,
-  wrappedResolver: WrappedResolver<T>,
-  offsetRelativeTo: OffsetRelativeTo
-): Promise<{
-  offsetRelativeTo: OffsetRelativeTo | null
-  nodes: T[] | null
-  clausesUsed: boolean
-}> {
-  // If clauses are being used, then an offsetRelativeTo will be determined.
-  // Otherwise, if clauses are not being used, we assume the wrapped resolver returns all rows from the DB source,
-  // where sorting, offsetting, and limiting has not been applied.
+  info
+): Promise<OffsetRelativeTo> {
+  const rootClauses = getRootClauses(args)
+  const nodes = await memoR(
+    parent,
+    {
+      ...args,
+      clauses: rootClauses,
+    },
+    ctx,
+    info
+  )
 
-  let nodes: T[] | null = null
-  let clausesUsed = false
-  if (!offsetRelativeTo) {
-    const rootClauses = getRootClauses(args)
-    const tempNodes = await wrappedResolver(
-      parent,
-      {
-        ...args,
-        clauses: rootClauses,
-      },
-      ctx,
-      info
+  if (!nodes || !Array.isArray(nodes)) {
+    throw new Error('Expected resolver to return an array.')
+  }
+
+  if (!nodes.length) {
+    return null
+  }
+
+  const offsetRelativeTo = nodes?.[0]?.[args.orderings[0].index]
+  if (!offsetRelativeTo && typeof offsetRelativeTo !== 'number') {
+    throw new Error(
+      `Unable to find a value for column "${args.orderings[0].index}".`
     )
-
-    // @ts-ignore
-    clausesUsed = rootClauses.__used
-    if (clausesUsed) {
-      // If clauses were used, then it is expected that tempNodes.length === 1,
-      // and that will now be designated as the offsetRelativeTo.
-      if (!tempNodes || !tempNodes[0]) {
-        // The caller should `return emptyResult` if it finds this "empty" return value:
-        return {
-          offsetRelativeTo: null,
-          nodes: null,
-          clausesUsed,
-        }
-      }
-
-      offsetRelativeTo = tempNodes[0][args.orderings[0].index]
-      if (!offsetRelativeTo && typeof offsetRelativeTo !== 'number') {
-        throw new Error(
-          `Unable to find a value for column "${args.orderings[0].index}".`
-        )
-      }
-    } else {
-      // If clauses were not used, then getRootClauses was ignored, meaning tempNodes should be the
-      // full table of data.
-      nodes = tempNodes ?? []
-      // In this case, when clauses are not used, offsetRelativeTo is determined later, after we sort the nodes.
-    }
   }
-
-  return {
-    offsetRelativeTo: offsetRelativeTo ?? null,
-    nodes,
-    clausesUsed,
-  }
+  return offsetRelativeTo
 }
 
-async function determineHasMore(
-  r: any,
+async function determineHasMore<T>(
+  memoR: WrappedResolver<T>,
   parent: any,
   args: PaginationArgs,
   ctx: any,
   info: any,
+  determinedOffsetRelativeTo: OffsetRelativeTo,
   originalOffsetRelativeTo: OffsetRelativeTo
-): Promise<boolean> {
+): Promise<{
+  hasMore: boolean
+  moreOffsetRelativeToOrignal: number
+}> {
   // hasMore controls if a button at the end of the pagination is available
   // to load more rows.
 
@@ -332,18 +318,22 @@ async function determineHasMore(
       offset: nextCountLoaded,
       limit: 1,
     },
-    originalOffsetRelativeTo
+    determinedOffsetRelativeTo
   )
-  const nodes = await r(
+  const nodes = await memoR(
     parent,
     {
       ...args,
       clauses,
+      offsetRelativeTo: JSON.stringify(determinedOffsetRelativeTo),
     },
     ctx,
     info
   )
-  return !!nodes.length
+  return {
+    hasMore: !!nodes.length,
+    moreOffsetRelativeToOrignal: nextCountLoaded,
+  }
 }
 
 const emptyResult: PaginationResult<any> = {
@@ -356,9 +346,96 @@ const emptyResult: PaginationResult<any> = {
     hasNew: false,
     countNew: 0,
     // The node[0] has this offset value:
-    nextOffset: 0,
+    moreOffset: 0,
     nextOffsetRelativeTo: JSON.stringify(null),
   },
+}
+
+function noClauseSort(nodes: any[], args: PaginationArgs) {
+  nodes.sort((a, b) => {
+    let orderingsIndex = 0
+
+    while (args.orderings[orderingsIndex]) {
+      // Keep trying to find a difference between a and b with respect to
+      // the orderings.
+
+      if (a[args.orderings[0].index] < b[args.orderings[0].index]) {
+        return args.orderings[0].direction.toUpperCase() === 'DESC' ? 1 : -1
+      }
+      if (a[args.orderings[0].index] > b[args.orderings[0].index]) {
+        return args.orderings[0].direction.toUpperCase() === 'DESC' ? -1 : 1
+      }
+      orderingsIndex++
+    }
+
+    // If we have gone through all orderings without finding a difference, then
+    // they are equal.
+    return 0
+  })
+  return nodes
+}
+
+// Returned arrays from memoR are always sorted, offsetted, and limited,
+// but in the case where clauses are not used, memoization is used so that,
+// only one call to the underlying resolver is ever made.
+function makeMemoizedResolver<T>(r: WrappedResolver<T>): WrappedResolver<T> {
+  let memoizedValue
+  let useMemo = false
+  return async (p, a: PaginationArgs, c, i) => {
+    if (useMemo) {
+      return noClauseOffsetAndLimit(memoizedValue, a)
+    }
+    const nodes = await r(p, a, c, i)
+
+    // @ts-ignore
+    if (!a.clauses[usedSymbol]) {
+      useMemo = true
+      memoizedValue = noClauseSort(nodes, a)
+      return noClauseOffsetAndLimit(memoizedValue, a)
+    }
+
+    return nodes
+  }
+}
+
+function noClauseOffsetAndLimit(
+  noClauseNodes: any[],
+  args: PaginationArgs
+): any[] {
+  // Pretend to be the database, doing the where, offset and limit on an already sorted array.
+  const type = args.clauses[typeSymbol]
+
+  const offsetRelativeTo: OffsetRelativeTo = args.offsetRelativeTo
+    ? JSON.parse(args.offsetRelativeTo)
+    : null
+
+  // Apply offset and limit
+  const offsetRelativeToExists =
+    !!offsetRelativeTo || typeof offsetRelativeTo === 'number'
+  // @ts-ignore
+  let offsetRootIndex: number = offsetRelativeToExists
+    ? noClauseNodes.findIndex(
+        (node) => node[args.orderings[0].index] === offsetRelativeTo
+      )
+    : -1
+  if (offsetRootIndex === -1) {
+    offsetRootIndex = 0
+  }
+
+  const offsetIndex = offsetRootIndex + args.offset
+  // To be consistent with the algorithm for negative offsets with clauses,
+  // the limitedNodes does not include rows which are equal to or come after the offsetRootIndex.
+  if (type === 'negative') {
+    const limit = Math.min(args.limit, Math.abs(args.offset))
+    const limitedNodes = noClauseNodes.slice(offsetIndex, offsetIndex + limit)
+    return limitedNodes.reverse()
+  } else {
+    const limitedNodes = noClauseNodes.slice(
+      offsetIndex,
+      offsetIndex + args.limit
+    )
+    return limitedNodes
+  }
 }
 
 export default function resolver<T>(
@@ -372,331 +449,145 @@ export default function resolver<T>(
       throw Error('There must be at least one ordering.')
     }
 
+    const memoR = makeMemoizedResolver(r)
+
     let offsetRelativeTo: OffsetRelativeTo = args.offsetRelativeTo
       ? JSON.parse(args.offsetRelativeTo)
       : null
+    const originalOffsetRelativeTo = offsetRelativeTo
 
     if (!offsetRelativeTo && args.offset < 0) {
-      // This should "redirect" to the case of:
+      // Since getting the offsetRelativeTo on page load means getting the first row in the DB,
+      // this should "redirect" to the case of:
       // args.offset: 0
       // offsetRelativeTo: null
       args.offset = 0
     }
 
+    if (!offsetRelativeTo) {
+      offsetRelativeTo = await determineOffsetRelativeTo(
+        memoR,
+        parent,
+        args,
+        ctx,
+        info
+      )
+      if (!offsetRelativeTo) {
+        return emptyResult
+      }
+    }
+
+    // Do the first resolver call to determine if clauses are being used or not.
     if (args.offset < 0) {
-      // Negative offset is used to get new rows,
-      // rows that have been added to the DB source after the client has established offsetRelativeTo,
-      // AKA rows associated with negative offset.
+      const injectedArgs: PaginationArgs = {
+        ...args,
+        clauses: getNegativeOffsetClauses(args, offsetRelativeTo),
+        offsetRelativeTo: JSON.stringify(offsetRelativeTo),
+      }
+      const nodes = await memoR(parent, injectedArgs, ctx, info)
 
-      // If offset is negative and the request does not specify an offsetRelativeTo,
-      // then this server would try to establish an offsetRelativeTo, but this would be the 0th index row,
-      // which means there are no rows with negative offset, so we return empty, but with a nextOffsetRelativeTo.
-      // if (!offsetRelativeTo) {
-      //   const initializationRes = await determineOffsetRelativeToOrNodes(parent, args, ctx, info, r, offsetRelativeTo)
-      //   // If an offsetRelativeTo or nodes were found, then there are more.
-      //   const hasMore = (initializationRes.clausesUsed && initializationRes.offsetRelativeTo !== null) || (!initializationRes.clausesUsed && !!initializationRes.nodes?.length)
-      //   return {
-      //     ...emptyResult,
-      //     info: {
-      //       ...emptyResult.info,
-      //       hasMore,
-      //       nextOffsetRelativeTo: JSON.stringify(initializationRes.offsetRelativeTo ?? null)
-      //     }
-      //   }
-      // }
+      console.log('negative nodes', nodes)
+      // nodes [ { id: 9, dateCreated: 9 }, { id: 8, dateCreated: 8 } ]
+      /*
 
-      // This newRowsClause will preform a query for all rows prior to offsetRootValue.
-      const clauses = getNegativeOffsetClauses(args, offsetRelativeTo)
-      const nodes = await r(
+      nodes [
+        { id: 9, userId: 0, dateCreated: 9 },
+        { id: 8, userId: 0, dateCreated: 8 }
+      ]
+      * */
+
+      // The nodes returned from negativeOffsetClauses is reversed.
+      const startIndex = nodes.length + args.offset
+      console.log('nodes.length', nodes.length)
+      console.log('args.offset', args.offset)
+      console.log('startIndex', startIndex)
+      const slicedNodes = nodes
+        .reverse()
+        .slice(startIndex, startIndex + args.limit)
+
+      const { hasMore, moreOffsetRelativeToOrignal } = await determineHasMore(
+        memoR,
+        parent,
+        args,
+        ctx,
+        info,
+        offsetRelativeTo,
+        originalOffsetRelativeTo
+      )
+
+      const result: PaginationResult<T> = {
+        nodes: slicedNodes,
+        info: {
+          // If the number of negative offset rows is equal to or larger than the page size,
+          // then the current offsetRoot is the next row after the negative offset rows,
+          // and that must occur on the next page, so there must be a next page.
+          hasMore,
+          hasNew: startIndex !== 0,
+          countNew: startIndex,
+          // If there is hasMore, it is found at moreOffset relative to nextOffsetRelativeTo.
+          // This calculation relies on slicedNodes not containing any non-negative offset rows
+          // relative to the originalOffsetRelativeTo.
+          // These slicedNodes are being added before the originalOffsetRelativeTo,
+          // so the difference in places between the nextOffsetRelativeTo and the original is added.
+          moreOffset: moreOffsetRelativeToOrignal + slicedNodes.length,
+          nextOffsetRelativeTo: JSON.stringify(
+            slicedNodes[0]?.[args.orderings[0].index] ?? null
+          ),
+        },
+      }
+
+      return result
+    } else {
+      const nodes = await memoR(
         parent,
         {
           ...args,
-          clauses,
+          clauses: getPositiveOffsetClauses(args, offsetRelativeTo),
+          offsetRelativeTo: JSON.stringify(offsetRelativeTo),
         },
         ctx,
         info
       )
 
-      // @ts-ignore
-      const clausesUsed = clauses.__used
+      console.log('positive nodes', nodes)
 
-      if (clausesUsed) {
-        // If clauses are used for negative offset,
-        // then it is expected that the sort, limit and offset are already applied.
+      // Get the count of rows associated with negative offset as countNew:
+      const negativeNodes = await memoR(
+        parent,
+        {
+          ...args,
+          clauses: getNegativeOffsetClauses(args, offsetRelativeTo),
+          offsetRelativeTo: JSON.stringify(offsetRelativeTo),
+        },
+        ctx,
+        info
+      )
 
-        // nodes contains all new rows, which is equivalent to doing a query of offset: -countNew.
-        // However, it is possible to set offset to a negative value in the range [-countNew, 0).
-        const startIndex = nodes.length + args.offset
-        const slicedNodes = nodes
-          .reverse()
-          .slice(startIndex, startIndex + args.limit)
+      console.log('negativeNodes', negativeNodes)
 
-        // Since the offset is negative, there must be more.
-        const hasMore = await determineHasMore(
-          r,
-          parent,
-          args,
-          ctx,
-          info,
-          offsetRelativeTo
-        )
+      const { hasMore, moreOffsetRelativeToOrignal } = await determineHasMore(
+        memoR,
+        parent,
+        args,
+        ctx,
+        info,
+        offsetRelativeTo,
+        originalOffsetRelativeTo
+      )
 
-        const result: PaginationResult<any> = {
-          nodes: slicedNodes,
-          info: {
-            // If the number of negative offset rows is equal to or larger than the page size,
-            // then the current offsetRoot is the next row after the negative offset rows,
-            // and that must occur on the next page, so there must be a next page.
-            hasMore,
-            hasNew: startIndex !== 0,
-            countNew: startIndex,
-            // The node[0] has this offset value:
-            nextOffset: 0,
-            nextOffsetRelativeTo: JSON.stringify(
-              slicedNodes[0]?.[args.orderings[0].index] ?? null
-            ),
-          },
-        }
-
-        return result
-      } else {
-        // It is expected that the sort, limit and offset have not been applied.
-
-        if (!nodes || !Array.isArray(nodes)) {
-          throw new Error('The pagination resolver should return an array.')
-        }
-
-        // Apply sort:
-        nodes.sort((a, b) => {
-          let orderingsIndex = 0
-
-          while (args.orderings[orderingsIndex]) {
-            // Keep trying to find a difference between a and b with respect to
-            // the orderings.
-
-            if (a[args.orderings[0].index] < b[args.orderings[0].index]) {
-              return args.orderings[0].direction.toUpperCase() === 'DESC'
-                ? 1
-                : -1
-            }
-            if (a[args.orderings[0].index] > b[args.orderings[0].index]) {
-              return args.orderings[0].direction.toUpperCase() === 'DESC'
-                ? -1
-                : 1
-            }
-            orderingsIndex++
-          }
-
-          // If we have gone through all orderings without finding a difference, then
-          // they are equal.
-          return 0
-        })
-
-        // Apply offset and limit
-        const offsetRelativeToGiven =
-          !!offsetRelativeTo || typeof offsetRelativeTo === 'number'
-        // @ts-ignore
-        let offsetRootIndex: number = offsetRelativeToGiven
-          ? nodes.findIndex(
-              (node) => node[args.orderings[0].index] === offsetRelativeTo
-            )
-          : -1
-        if (offsetRootIndex === -1) {
-          offsetRootIndex = 0
-        }
-
-        const offsetIndex = offsetRootIndex + args.offset
-        // To be consistent with the algorithm for negative offsets with clauses,
-        // the limitedNodes does not include rows which are equal to or come after the offsetRootIndex.
-        const limit = Math.min(args.limit, Math.abs(args.offset))
-        const limitedNodes = nodes.slice(offsetIndex, offsetIndex + limit)
-
-        const result: PaginationResult<any> = {
-          nodes: limitedNodes,
-          info: {
-            // If the number of negative offset rows is equal to or larger than the page size,
-            // then the current offsetRoot is the next row after the negative offset rows,
-            // and that must occur on the next page, so there must be a next page.
-            hasMore: true,
-            hasNew: offsetIndex > 0,
-            countNew: offsetIndex,
-
-            // The node[0] has this offset value:
-            nextOffset: 0,
-            nextOffsetRelativeTo: JSON.stringify(
-              limitedNodes[0]?.[args.orderings[0].index] ?? null
-            ),
-          },
-        }
-
-        return result
-      }
-    } else {
-      // args.offset is 0 or positive
-
-      let nodes: T[] | null
-      if (!offsetRelativeTo) {
-        const initializationRes = await determineOffsetRelativeToOrNodes(
-          parent,
-          args,
-          ctx,
-          info,
-          r,
-          offsetRelativeTo
-        )
-        if (
-          (initializationRes.clausesUsed &&
-            initializationRes.offsetRelativeTo === null) ||
-          (!initializationRes.clausesUsed && !initializationRes.nodes?.length)
-        ) {
-          // In both cases, whether clauses were used or not,
-          // when the DB source is empty, we will not be able to determine an offsetRelativeTo or nodes.
-          // Therefore, return empty.
-          return emptyResult
-        }
-        offsetRelativeTo = initializationRes.offsetRelativeTo
-        nodes = initializationRes.nodes
+      const result: PaginationResult<T> = {
+        nodes,
+        info: {
+          hasMore,
+          hasNew: !!negativeNodes.length,
+          countNew: negativeNodes.length,
+          // nextOffsetRelativeTo is equal to the original.
+          moreOffset: moreOffsetRelativeToOrignal,
+          nextOffsetRelativeTo: JSON.stringify(offsetRelativeTo),
+        },
       }
 
-      let clausesUsed = false
-      // @ts-ignore
-      if (!nodes) {
-        // nodes could have been determined by now if the request did not specify a
-        // offsetRelativeTo and clauses aren't being used
-        const clauses = getPositiveOffsetClauses(args, offsetRelativeTo)
-        // @ts-ignore
-        nodes = await r(
-          parent,
-          {
-            ...args,
-            // @ts-ignore
-            offsetRelativeTo,
-            clauses,
-          },
-          ctx,
-          info
-        )
-        // @ts-ignore
-        clausesUsed = clauses.__used
-
-        if (!nodes || !Array.isArray(nodes)) {
-          throw new Error('The pagination resolver should return an array.')
-        }
-      }
-
-      if (clausesUsed) {
-        // If clauses are used, then nodes is already sorted, offsetted, and limited.
-
-        // Get the count of rows associated with negative offset as countNew:
-        // @ts-ignore
-        const negativeOffsetRows = await r(
-          parent,
-          {
-            ...args,
-            // @ts-ignore
-            offsetRelativeTo,
-            clauses: getNegativeOffsetClauses(args, offsetRelativeTo),
-          },
-          ctx,
-          info
-        )
-
-        const hasMore = await determineHasMore(
-          r,
-          parent,
-          args,
-          ctx,
-          info,
-          offsetRelativeTo
-        )
-        // if (nodes.length === args.limit + 1) {
-        //   hasMore = true
-        //   nodes.pop()
-        // }
-
-        const result: PaginationResult<any> = {
-          nodes,
-          info: {
-            hasMore,
-            hasNew: !!negativeOffsetRows.length,
-            countNew: negativeOffsetRows.length,
-            nextOffset: args.offset,
-            nextOffsetRelativeTo: JSON.stringify(offsetRelativeTo),
-          },
-        }
-
-        return result
-      } else {
-        // If clauses are not used, then it is expected that the resolver
-        // returns all rows.
-        // IOW, sort, offset, and limit have not been applied yet.
-
-        // Apply sort:
-        nodes.sort((a, b) => {
-          let orderingsIndex = 0
-
-          while (args.orderings[orderingsIndex]) {
-            // Keep trying to find a difference between a and b with respect to
-            // the orderings.
-
-            if (a[args.orderings[0].index] < b[args.orderings[0].index]) {
-              return args.orderings[0].direction.toUpperCase() === 'DESC'
-                ? 1
-                : -1
-            }
-            if (a[args.orderings[0].index] > b[args.orderings[0].index]) {
-              return args.orderings[0].direction.toUpperCase() === 'DESC'
-                ? -1
-                : 1
-            }
-            orderingsIndex++
-          }
-
-          // If we have gone through all orderings without finding a difference, then
-          // they are equal.
-          return 0
-        })
-
-        // Apply offset and limit
-        const offsetRelativeToGiven =
-          !!offsetRelativeTo || typeof offsetRelativeTo === 'number'
-        // @ts-ignore
-        let offsetRootIndex = offsetRelativeToGiven
-          ? nodes.findIndex(
-              (node) => node[args.orderings[0].index] === offsetRelativeTo
-            )
-          : -1
-        if (offsetRootIndex === -1) {
-          offsetRootIndex = 0
-        }
-        const nextOffsetRelativeTo =
-          nodes[offsetRootIndex]?.[args.orderings[0].index] ?? null
-
-        const offsetIndex = offsetRootIndex + args.offset
-        const limitedNodes = nodes.slice(offsetIndex, offsetIndex + args.limit)
-
-        /*
-         nodes:        -------
-         limitedNodes:    ^--
-        * */
-
-        const result: PaginationResult<any> = {
-          nodes: limitedNodes,
-          info: {
-            hasMore: nodes.length - offsetIndex > limitedNodes.length,
-            hasNew: offsetRootIndex > 0,
-            countNew: offsetRootIndex,
-
-            // When the client receives these values, it should accept them.
-            // offset = nextOffset
-            nextOffset: args.offset,
-            // offsetRelativeTo = nextOffsetRelativeTo
-            nextOffsetRelativeTo: JSON.stringify(nextOffsetRelativeTo),
-          },
-        }
-
-        return result
-      }
+      return result
     }
   }
 }

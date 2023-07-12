@@ -144,7 +144,7 @@ export default function paginationDirective(
             hasMore: Boolean!
             hasNew: Boolean!
             countNew: Int!
-            nextOffset: Int!
+            moreOffset: Int!
             nextOffsetRelativeTo: String!
           }
         `)
