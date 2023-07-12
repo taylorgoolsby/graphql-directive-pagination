@@ -38,6 +38,7 @@ export interface PaginationArgs {
   limit: number
   countNewLimit?: number
   orderings: Ordering[]
+  countLoaded: number
   offsetRelativeTo?: string
 
   clauses: Clauses
@@ -127,14 +128,17 @@ function getNegativeOffsetClauses(
   })
 }
 
-function getClauses(args: PaginationArgs, offsetRelativeTo: any): Clauses {
+function getPositiveOffsetClauses(
+  args: PaginationArgs,
+  offsetRelativeTo: any
+): Clauses {
   const offsetRelativeToUnix =
     offsetRelativeTo instanceof Date
       ? Math.round(offsetRelativeTo.valueOf() / 1000)
       : null
 
   const offset = args.offset
-  const limit = args.limit + 1 // limit is padded in order to detect if there is next page.
+  const limit = args.limit // limit is padded in order to detect if there is next page.
   // @ts-ignore
   const orderBy = args.orderings.map((o) =>
     escape(`?? ${o.direction.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}`, [
@@ -295,6 +299,53 @@ async function determineOffsetRelativeToOrNodes<T>(
   }
 }
 
+async function determineHasMore(
+  r: any,
+  parent: any,
+  args: PaginationArgs,
+  ctx: any,
+  info: any,
+  originalOffsetRelativeTo: OffsetRelativeTo
+): Promise<boolean> {
+  // hasMore controls if a button at the end of the pagination is available
+  // to load more rows.
+
+  // If the request did not specify offsetRelativeTo, then countLoaded should have been 0.
+  const offsetRelativeToExists =
+    !!originalOffsetRelativeTo || typeof originalOffsetRelativeTo === 'number'
+  const countLoaded = offsetRelativeToExists ? args.countLoaded : 0
+
+  // These calculated offsets are relative to the request's offsetRelativeTo.
+
+  // The offset of the last row the client has loaded:
+  const currentOffsetLast = countLoaded - 1
+  // After this response, it will be the offset of the last row the client has loaded:
+  const nextOffsetLast = args.offset + args.limit - 1
+  // Diff these two offsets:
+  const diff = Math.max(nextOffsetLast - currentOffsetLast, 0)
+  // After this response, it will be the client's countLoaded relative to the original offsetRelativeTo:
+  const nextCountLoaded = countLoaded + diff
+
+  const clauses = getPositiveOffsetClauses(
+    {
+      ...args,
+      offset: nextCountLoaded,
+      limit: 1,
+    },
+    originalOffsetRelativeTo
+  )
+  const nodes = await r(
+    parent,
+    {
+      ...args,
+      clauses,
+    },
+    ctx,
+    info
+  )
+  return !!nodes.length
+}
+
 const emptyResult: PaginationResult<any> = {
   nodes: [],
   info: {
@@ -381,7 +432,14 @@ export default function resolver<T>(
           .slice(startIndex, startIndex + args.limit)
 
         // Since the offset is negative, there must be more.
-        const hasMore = true
+        const hasMore = await determineHasMore(
+          r,
+          parent,
+          args,
+          ctx,
+          info,
+          offsetRelativeTo
+        )
 
         const result: PaginationResult<any> = {
           nodes: slicedNodes,
@@ -505,7 +563,7 @@ export default function resolver<T>(
       if (!nodes) {
         // nodes could have been determined by now if the request did not specify a
         // offsetRelativeTo and clauses aren't being used
-        const clauses = getClauses(args, offsetRelativeTo)
+        const clauses = getPositiveOffsetClauses(args, offsetRelativeTo)
         // @ts-ignore
         nodes = await r(
           parent,
@@ -543,11 +601,18 @@ export default function resolver<T>(
           info
         )
 
-        let hasMore = false
-        if (nodes.length === args.limit + 1) {
-          hasMore = true
-          nodes.pop()
-        }
+        const hasMore = await determineHasMore(
+          r,
+          parent,
+          args,
+          ctx,
+          info,
+          offsetRelativeTo
+        )
+        // if (nodes.length === args.limit + 1) {
+        //   hasMore = true
+        //   nodes.pop()
+        // }
 
         const result: PaginationResult<any> = {
           nodes,

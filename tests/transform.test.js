@@ -39,7 +39,7 @@ type Query {
 
 type User {
   userId: Int
-  posts(offset: Int!, limit: Int!, countNewLimit: Int, orderings: [PaginationOrdering!]!, offsetRelativeTo: String): PostPagination! @sql
+  posts(offset: Int!, limit: Int!, countNewLimit: Int, orderings: [PaginationOrdering!]!, countLoaded: Int!, offsetRelativeTo: String): PostPagination! @sql
 }
 
 type Post {

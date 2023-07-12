@@ -79,6 +79,38 @@ let offset = 0
 let limit = 2
 let offsetRelativeTo = null
 let lastRes = null
+let items = []
+
+function testGetOffsetRelativeToClauses(t, args) {
+  t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
+  t.equal(args.clauses.mysql.limit, `0, 1`, 'mysql limit arg, getOffsetRelativeTo call')
+
+  t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
+  t.equal(args.clauses.postgres.offset, `0`, 'postgres offset arg, getOffsetRelativeTo call')
+  t.equal(args.clauses.postgres.limit, `1`, 'postgres limit arg, getOffsetRelativeTo call')
+}
+
+function testPositiveClauses(t, args, offsetRelativeTo, expectedOffset, expectedLimit) {
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` <= ${offsetRelativeTo}`, 'mysql where arg, getPositiveRows call')
+  t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
+  t.equal(args.clauses.mysql.limit, `${expectedOffset}, ${expectedLimit}`, 'mysql limit arg, getPositiveRows call')
+
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` <= ${offsetRelativeTo}`, 'postgres where arg, getPositiveRows call')
+  t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
+  t.equal(args.clauses.postgres.offset, `${expectedOffset}`, 'postgres offset arg, getPositiveRows call')
+  t.equal(args.clauses.postgres.limit, `${expectedLimit}`, 'postgres limit arg, getPositiveRows call')
+}
+
+function testNegativeClauses(t, args, offsetRelativeTo, expectedOffset, expectedLimit) {
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` > ${offsetRelativeTo}`, 'mysql where arg, getNegativeRows call')
+  t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
+  t.equal(args.clauses.mysql.limit, `${expectedOffset}, ${expectedLimit}`, 'mysql limit arg, getNegativeRows call')
+
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` > ${offsetRelativeTo}`, 'postgres where arg, getNegativeRows call')
+  t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
+  t.equal(args.clauses.postgres.offset, `${expectedOffset}`, 'postgres offset arg, getNegativeRows call')
+  t.equal(args.clauses.postgres.limit, `${expectedLimit}`, 'postgres limit arg, getNegativeRows call')
+}
 
 test('page load request on empty data source', async (t) => {
   const callSpy = sinon.spy()
@@ -90,12 +122,7 @@ test('page load request on empty data source', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.mysql.limit, '0, 1', 'mysql limit arg, getOffsetRelativeTo call')
-
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.limit, '1', 'postgres limit arg, getOffsetRelativeTo call')
+      testGetOffsetRelativeToClauses(t, args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getOffsetRelativeTo finds 0 rows')
@@ -106,7 +133,7 @@ test('page load request on empty data source', async (t) => {
   offset = 0
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 0, 'limit respected')
   t.equal(res.info.hasMore, false, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -129,12 +156,7 @@ test('page load request on empty data source with negative offset', async (t) =>
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.mysql.limit, '0, 1', 'mysql limit arg, getOffsetRelativeTo call')
-
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.limit, '1', 'postgres limit arg, getOffsetRelativeTo call')
+      testGetOffsetRelativeToClauses(t, args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getOffsetRelativeTo finds 0 rows')
@@ -145,7 +167,7 @@ test('page load request on empty data source with negative offset', async (t) =>
   offset = -2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 0, 'limit respected')
   t.equal(res.info.hasMore, false, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -174,45 +196,32 @@ test('page load request with negative offset', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.mysql.limit, '0, 1', 'mysql limit arg, getOffsetRelativeTo call')
-
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.limit, '1', 'postgres limit arg, getOffsetRelativeTo call')
+      testGetOffsetRelativeToClauses(t, args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '0, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 9, 'getPositiveRows finds row 9')
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
-      t.equal(rows[2].id, 7, 'getPositiveRows finds row 7')
       return rows
-    } else {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+    } else if (callSpy.callCount === 3) {
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 9, 2, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 7, 'hasMore finds row 7')
       return rows
     }
   })
@@ -220,14 +229,14 @@ test('page load request with negative offset', async (t) => {
   offset = -2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.info.hasMore, true, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.nextOffset, 0, 'nextOffset 0')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
-  t.equal(callSpy.callCount, 3, 'three calls were made')
+  t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
@@ -243,45 +252,32 @@ test('page load request on non-zero starting page', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.mysql.limit, '0, 1', 'mysql limit arg, getOffsetRelativeTo call')
-
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.limit, '1', 'postgres limit arg, getOffsetRelativeTo call')
+      testGetOffsetRelativeToClauses(t, args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '4, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '4', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 9, 4, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 5, 'getPositiveRows finds row 5')
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
-      t.equal(rows[2].id, 3, 'getPositiveRows finds row 3')
       return rows
-    } else {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+    } else if (callSpy.callCount === 3) {
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 9, 6, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 3, 'hasMore finds row 3')
       return rows
     }
   })
@@ -290,7 +286,7 @@ test('page load request on non-zero starting page', async (t) => {
   offset = limit * 2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 5, 'row 5 found')
   t.equal(res.nodes[1].id, 4, 'row 4 found')
@@ -299,7 +295,7 @@ test('page load request on non-zero starting page', async (t) => {
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.nextOffset, 4, 'nextOffset 4')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
-  t.equal(callSpy.callCount, 3, 'three calls were made')
+  t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
@@ -315,45 +311,32 @@ test('page load request', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.mysql.limit, '0, 1', 'mysql limit arg, getOffsetRelativeTo call')
-
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getOffsetRelativeTo call')
-      t.equal(args.clauses.postgres.limit, '1', 'postgres limit arg, getOffsetRelativeTo call')
+      testGetOffsetRelativeToClauses(t, args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 1, 'getOffsetRelativeTo finds 1 row')
       t.equal(rows[0].id, 9, 'getOffsetRelativeTo finds row id: 9')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '0, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 9, 'getPositiveRows finds row 9')
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
-      t.equal(rows[2].id, 7, 'getPositiveRows finds row 7')
       return rows
-    } else {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+    } else if (callSpy.callCount === 3) {
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 9, 2, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 7, 'hasMore finds row 7')
       return rows
     }
   })
@@ -361,17 +344,18 @@ test('page load request', async (t) => {
   offset = 0
   offsetRelativeTo = null
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.info.hasMore, true, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.nextOffset, 0, 'nextOffset 0')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
-  t.equal(callSpy.callCount, 3, 'three calls were made')
+  t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+  items = res.nodes
 })
 
 test('load more request', async (t) => {
@@ -384,39 +368,31 @@ test('load more request', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '2, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '2', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 9, 2, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 7, 'getPositiveRows finds row 7')
       t.equal(rows[1].id, 6, 'getPositiveRows finds row 6')
-      t.equal(rows[2].id, 5, 'getPositiveRows finds row 5')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 9, 4, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 5, 'hasMore finds row 5')
       return rows
     }
   })
 
   offset += limit
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 7, 'row 7 found')
   t.equal(res.nodes[1].id, 6, 'row 6 found')
@@ -425,10 +401,11 @@ test('load more request', async (t) => {
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.nextOffset, 2, 'nextOffset 2')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo unchanged')
-  t.equal(callSpy.callCount, 2, 'two calls were made')
+  t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+  items = [...items, ...res.nodes]
 })
 
 test('load more request after new rows have been added', async (t) => {
@@ -444,41 +421,33 @@ test('load more request after new rows have been added', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '4, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 9', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '4', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 9, 4, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 5, 'getPositiveRows finds row 5')
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
-      t.equal(rows[2].id, 3, 'getPositiveRows finds row 3')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 10, 'row 10 is new')
       t.equal(rows[1].id, 11, 'row 11 is new')
       return rows
+    } else {
+      testPositiveClauses(t, args, 9, 6, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 3, 'hasMore finds row 3')
+      return rows
     }
   })
 
   offset += limit
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 5, 'row 5 found')
   t.equal(res.nodes[1].id, 4, 'row 4 found')
@@ -487,10 +456,11 @@ test('load more request after new rows have been added', async (t) => {
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.nextOffset, 4, 'nextOffset 4')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo unchanged')
-  t.equal(callSpy.callCount, 2, 'two calls were made')
+  t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+  items = [...items, ...res.nodes]
 })
 
 test('load new request', async (t) => {
@@ -503,19 +473,19 @@ test('load new request', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 9', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 9, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 10, 'row 10 is new')
       t.equal(rows[1].id, 11, 'row 11 is new')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 9, 6, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 3, 'hasMore finds row 3')
       return rows
     }
   })
@@ -523,7 +493,7 @@ test('load new request', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 11, 'row 11 found')
   t.equal(res.nodes[1].id, 10, 'row 10 found')
@@ -532,11 +502,12 @@ test('load new request', async (t) => {
   t.equal(res.info.countNew, 0, 'countNew 2')
   t.equal(res.info.nextOffset, 0, 'nextOffset 2')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(11), 'nextOffsetRelativeTo reset')
-  t.equal(callSpy.callCount, 1, 'one call was made')
+  t.equal(callSpy.callCount, 2, 'call was made')
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
   offset = tempOffset + lastRes.info.countNew
   lastRes = res
+  items = [...res.nodes, ...items]
 })
 
 test('add two more posts and continue load more where left off', async (t) => {
@@ -552,41 +523,33 @@ test('add two more posts and continue load more where left off', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 11', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '8, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 11', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '8', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 11, 8, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 3, 'getPositiveRows finds 3 rows (1 extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
       t.equal(rows[0].id, 3, 'getPositiveRows finds row 3')
       t.equal(rows[1].id, 2, 'getPositiveRows finds row 2')
-      t.equal(rows[2].id, 1, 'getPositiveRows finds row 1')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 11', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 11', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 11, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 12, 'row 12 is new')
       t.equal(rows[1].id, 13, 'row 13 is new')
       return rows
+    } else {
+      testPositiveClauses(t, args, 11, 10, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore finds 1 row')
+      t.equal(rows[0].id, 1, 'hasMore finds row 1')
+      return rows
     }
   })
 
   offset += limit
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 3, 'row 3 found')
   t.equal(res.nodes[1].id, 2, 'row 2 found')
@@ -595,10 +558,11 @@ test('add two more posts and continue load more where left off', async (t) => {
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.nextOffset, 8, 'nextOffset 2')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(11), 'nextOffsetRelativeTo unchanged')
-  t.equal(callSpy.callCount, 2, 'two calls were made')
+  t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+  items = [...items, ...res.nodes]
 })
 
 test('load new request while db added new rows', async (t) => {
@@ -614,19 +578,19 @@ test('load new request while db added new rows', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 11', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 4', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 11', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '4', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 11, 0, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 4, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 12, 'row 12 is new')
       t.equal(rows[1].id, 13, 'row 13 is new')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 11, 10, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 1, 'hasMore find 1 row')
+      t.equal(rows[0].id, 1, 'hasMore finds row 1')
       return rows
     }
   })
@@ -634,7 +598,7 @@ test('load new request while db added new rows', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 13, 'row 13 found')
   t.equal(res.nodes[1].id, 12, 'row 12 found')
@@ -643,11 +607,12 @@ test('load new request while db added new rows', async (t) => {
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.nextOffset, 0, 'nextOffset 2')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(13), 'nextOffsetRelativeTo reset')
-  t.equal(callSpy.callCount, 1, 'one call was made')
+  t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
   offset = tempOffset + lastRes.info.countNew
   lastRes = res
+  items = [...res.nodes, ...items]
 })
 
 test('final load more request (has more false)', async (t) => {
@@ -660,40 +625,32 @@ test('final load more request (has more false)', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 13', 'mysql where arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.mysql.limit, '12, 3', 'mysql limit arg, getPositiveRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` <= 13', 'postgres where arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.offset, '12', 'postgres offset arg, getPositiveRows call')
-      t.equal(args.clauses.postgres.limit, '3', 'postgres limit arg, getPositiveRows call')
+      testPositiveClauses(t, args, 13, 12, 2)
 
       const rows = await postsResolver(parent, args)
-      t.equal(rows.length, 2, 'getPositiveRows finds 2 rows (no extra row)')
+      t.equal(rows.length, 2, 'getPositiveRows finds 2 rows')
       t.equal(rows[0].id, 1, 'getPositiveRows finds row 1')
       t.equal(rows[1].id, 0, 'getPositiveRows finds row 0')
       return rows
     } else if (callSpy.callCount === 2) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 2', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '2', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 13, 0, 2)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 14, 'row 14 is new')
       t.equal(rows[1].id, 15, 'row 15 is new')
       return rows
+    } else {
+      testPositiveClauses(t, args, 13, 14, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'hasMore find no rows')
+      return rows
     }
   })
 
   offset += limit
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 1, 'row 1 found')
   t.equal(res.nodes[1].id, 0, 'row 0 found')
@@ -702,10 +659,11 @@ test('final load more request (has more false)', async (t) => {
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.nextOffset, 12, 'nextOffset 12')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(13), 'nextOffsetRelativeTo unchanged')
-  t.equal(callSpy.callCount, 2, 'two calls were made')
+  t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
+  items = [...items, ...res.nodes]
 })
 
 test('final load new request', async (t) => {
@@ -718,19 +676,18 @@ test('final load new request', async (t) => {
     t.equal(args.limit, 2, 'limit arg')
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'mysql where arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.mysql.limit, '0, 4', 'mysql limit arg, getNegativeRows call')
-
-      t.equal(args.clauses.mysql.where, '`dateCreated` > 13', 'postgres where arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.offset, '0', 'postgres offset arg, getNegativeRows call')
-      t.equal(args.clauses.postgres.limit, '4', 'postgres limit arg, getNegativeRows call')
+      testNegativeClauses(t, args, 13, 0, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
       t.equal(rows[0].id, 14, 'row 14 is new')
       t.equal(rows[1].id, 15, 'row 15 is new')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 13, 14, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'hasMore find no rows')
       return rows
     }
   })
@@ -738,18 +695,25 @@ test('final load new request', async (t) => {
   const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4})
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 15, 'row 15 found')
   t.equal(res.nodes[1].id, 14, 'row 14 found')
-  t.equal(res.info.hasMore, true, 'hasMore true')
+  t.equal(res.info.hasMore, false, 'hasMore false')
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 2')
   t.equal(res.info.nextOffset, 0, 'nextOffset 2')
   t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(15), 'nextOffsetRelativeTo reset')
-  t.equal(callSpy.callCount, 1, 'one call was made')
+  t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.nextOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
   offset = tempOffset + lastRes.info.countNew
   lastRes = res
+  items = [...res.nodes, ...items]
+
+  // verify items was reconstructed correctly:
+  items.reverse()
+  for (let i = 0; i < items.length; i++) {
+    t.equal(items[i].id, i, 'item order')
+  }
 })

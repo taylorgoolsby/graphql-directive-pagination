@@ -136,7 +136,9 @@ type User {
     # See the section on New Rows.
     countNewLimit: Int,
     # At least 1 ordering should be included.
-    orderings: [PaginationOrdering!]!, 
+    orderings: [PaginationOrdering!]!,
+    # The number of rows the client has should be passed into countLoaded on every request.
+    countLoaded: Int!
     # After the initial page load, the server will respond with
     # `nextOffsetRelativeTo`.
     # This value should be echoed back in subsequent requests.
@@ -268,13 +270,15 @@ query PageLoad (
   $startingOffset: Int!
   $pageSize: Int!
   $orderings: [PaginationOrdering!]!
+  $countLoaded: Int!
 ) {
   user {
     id
     posts(
       offset: $startingOffset, 
       limit: $pageSize, 
-      orderings: $orderings
+      orderings: $orderings,
+      countLoaded: $countLoaded
       # notice offsetRelativeTo is blank
     ) {
       nodes {
@@ -298,6 +302,7 @@ query LoadMore (
   $pageOffset: Int!
   $pageSize: Int!
   $orderings: [PaginationOrdering!]!
+  $countLoaded: Int!
   # The client should echo back the value of nextOffsetRelativeTo
   # which the server provided in the PageLoad response.
   $offsetRelativeTo: String!
@@ -307,7 +312,8 @@ query LoadMore (
     posts(
       offset: $pageOffset, 
       limit: $pageSize, 
-      orderings: $orderings, 
+      orderings: $orderings,
+      countLoaded: $countLoaded,
       offsetRelativeTo: $offsetRelativeTo
     ) {
       nodes {
@@ -330,6 +336,7 @@ query LoadNew (
   $minusCountNew: Int!
   $countNew: Int!
   $orderings: [PaginationOrdering!]!
+  $countLoaded: Int!
   # The client should echo back the value of nextOffsetRelativeTo
   # which the server provided in the PageLoad response.
   $offsetRelativeTo: String!
@@ -339,7 +346,8 @@ query LoadNew (
     posts(
       offset: $minusCountNew, 
       limit: $countNew, 
-      orderings: $orderings, 
+      orderings: $orderings,
+      countLoaded: $countLoaded,
       offsetRelativeTo: $offsetRelativeTo
     ) {
       nodes {

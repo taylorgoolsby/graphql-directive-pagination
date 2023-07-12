@@ -119,7 +119,7 @@ const query = gql`
   query {
     user {
       id
-      posts(offset: 0, limit: 2, orderings: [{index: "dateCreated", direction: "desc"}, {index: "id", direction: "desc"}]) {
+      posts(offset: 0, limit: 2, orderings: [{index: "dateCreated", direction: "desc"}, {index: "id", direction: "desc"}], countLoaded: 0) {
         nodes {
           id
           dateCreated

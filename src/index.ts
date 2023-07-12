@@ -288,6 +288,13 @@ function makePaginationArgs(): GraphQLFieldConfigArgumentMap {
         )
       ),
     },
+    countLoaded: {
+      type: new GraphQLNonNull(
+        new GraphQLScalarType({
+          name: 'Int',
+        })
+      ),
+    },
     offsetRelativeTo: {
       type: new GraphQLScalarType({
         name: 'String',
