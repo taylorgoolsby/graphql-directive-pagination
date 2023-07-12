@@ -81,6 +81,12 @@ type PaginationInfo {
   # your client-side offset.
   # E.G. offset += limit
   hasMore: Boolean!
+
+  # moreOffset is relative to nextOffsetRelativeTo.
+  # It is the offset of the next non-negative row the client doesn't have yet.
+  # If hasMore is false, moreOffset is still set to the next row so that the 
+  # client can make a LoadMore request after waiting some time. 
+  moreOffset: Int!
   
   # Tells whether or not there are new rows available. "New rows" are not
   # the same as "more rows".
@@ -94,16 +100,7 @@ type PaginationInfo {
   # offsetRelativeTo: $offsetRelativeTo
   countNew: Int!
   
-  # The client should always accept these values.
-  # E.G. onResponse:
-  # offset = nextOffset
-  # offsetRelativeTo = nextOffsetRelativeTo
-  nextOffset: Int!
-  # FYI, nextOffsetRelativeTo is equal to 
-  # `JSON.stringify(node[0][orderings[0].index])`.
-  # It is denormalized into the response so that the server is 
-  # authoritative and there is less work to be done for those 
-  # using this package.
+  # The client should echo nextOffsetRelativeTo back in the next request.
   nextOffsetRelativeTo: String!
 }
 
@@ -288,7 +285,7 @@ query PageLoad (
         hasMore
         hasNew
         countNew
-        nextOffset
+        moreOffset
         nextOffsetRelativeTo
       }
     }
@@ -323,7 +320,7 @@ query LoadMore (
         hasMore
         hasNew
         countNew
-        nextOffset
+        moreOffset
         nextOffsetRelativeTo
       }
     }
@@ -357,7 +354,7 @@ query LoadNew (
         hasMore
         hasNew
         countNew
-        nextOffset
+        moreOffset
         nextOffsetRelativeTo
       }
     }
@@ -392,7 +389,7 @@ Instead of doing a full page refresh, it is possible to gracefully show these ne
 
 A naive way to do this would be to repeat what is done on initial page load.
 The client could send `offsetRelativeTo: null` to the server, emulating what it does on initial page load.
-The server would respond with a new `nextOffsetRelativeTo` and `nextOffset` which the client should accept.
+The server would respond with a new `nextOffsetRelativeTo` and `moreOffset` which the client should accept.
 
 This is naive because the `limit` in the request can cause there to be a gap in results. For example, if there are
 35 new rows, and the client requests `limit: 10, offsetRelativeTo: null`, then the first 10 of those 35 rows will be
@@ -452,6 +449,8 @@ Because of this usage of `limit`, the server response's `countNew` won't be grea
 If you would like to override this default, then you can include `countNewLimit` in the request. `countNewLimit` will
 only be used in the SQL query for counting new rows, 
 and it will not affect the query for rows associated with a non-negative offset. This allows you to display "Show N New Rows" to your end users where the maximum value N can take on is specified by `countNewLimit`. 
+
+Additional Note: On a `LoadNew` request, I.E. a request with negative offset, the response will never contain rows that were associated with a non-negative offset. For example, if there were 35 new rows, it doesn't matter what `offset`, `limit`, or `countNewLimit` are set to, only up to 35 rows can be returned. The row that was associated with `nextOffsetRelativeTo` from the previous response and echoed back in the negative offset requests `offsetRelativeTo` will never be included in the response.  
 
 ## Orderings
 
