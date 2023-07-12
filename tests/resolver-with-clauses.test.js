@@ -743,7 +743,7 @@ test('load more when there are none', async (t) => {
   items = [...items, ...res.nodes]
 })
 
-test('load more when there are none', async (t) => {
+test('load new when there are none', async (t) => {
   const callSpy = sinon.spy()
 
   const wrappedResolver = pagination(async (parent, args) => {
