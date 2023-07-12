@@ -60,6 +60,11 @@ function getNegativeOffsetClauses(
   args: PaginationArgs,
   offsetRelativeTo: any
 ): Clauses {
+  const offsetRelativeToUnix =
+    offsetRelativeTo instanceof Date
+      ? Math.round(offsetRelativeTo.valueOf() / 1000)
+      : null
+
   // const limit = args.limit + 1 // limit is padded in order to detect if there is next page.
   // @ts-ignore
   const orderBy = args.orderings.map((o) =>
@@ -78,20 +83,30 @@ function getNegativeOffsetClauses(
   const result = {
     mysql: {
       // @ts-ignore
-      where: escape(`?? ${desc ? '>' : '<'} ?`, [
-        args.orderings[0].index,
-        offsetRelativeTo,
-      ]),
+      where: offsetRelativeToUnix
+        ? escape(
+            `?? ${desc ? '>' : '<'} FROM_UNIXTIME(${offsetRelativeToUnix})`,
+            [args.orderings[0].index]
+          )
+        : escape(`?? ${desc ? '>' : '<'} ?`, [
+            args.orderings[0].index,
+            offsetRelativeTo,
+          ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
       limit: escape('0, ?', [limit]),
     },
     postgres: {
       // @ts-ignore
-      where: escape(`?? ${desc ? '>' : '<'} ?`, [
-        args.orderings[0].index,
-        offsetRelativeTo,
-      ]),
+      where: offsetRelativeToUnix
+        ? escape(
+            `?? ${desc ? '>' : '<'} to_timestamp(${offsetRelativeToUnix})`,
+            [args.orderings[0].index]
+          )
+        : escape(`?? ${desc ? '>' : '<'} ?`, [
+            args.orderings[0].index,
+            offsetRelativeTo,
+          ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
       offset: '0',
@@ -113,6 +128,11 @@ function getNegativeOffsetClauses(
 }
 
 function getClauses(args: PaginationArgs, offsetRelativeTo: any): Clauses {
+  const offsetRelativeToUnix =
+    offsetRelativeTo instanceof Date
+      ? Math.round(offsetRelativeTo.valueOf() / 1000)
+      : null
+
   const offset = args.offset
   const limit = args.limit + 1 // limit is padded in order to detect if there is next page.
   // @ts-ignore
@@ -127,20 +147,30 @@ function getClauses(args: PaginationArgs, offsetRelativeTo: any): Clauses {
   const result = {
     mysql: {
       // @ts-ignore
-      where: escape(`?? ${desc ? '<=' : '>='} ?`, [
-        args.orderings[0].index,
-        offsetRelativeTo,
-      ]),
+      where: offsetRelativeToUnix
+        ? escape(
+            `?? ${desc ? '<=' : '>='} FROM_UNIXTIME(${offsetRelativeToUnix})`,
+            [args.orderings[0].index]
+          )
+        : escape(`?? ${desc ? '<=' : '>='} ?`, [
+            args.orderings[0].index,
+            offsetRelativeTo,
+          ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
       limit: escape('?, ?', [offset, limit]),
     },
     postgres: {
       // @ts-ignore
-      where: escape(`?? ${desc ? '<=' : '>='} ?`, [
-        args.orderings[0].index,
-        offsetRelativeTo,
-      ]),
+      where: offsetRelativeToUnix
+        ? escape(
+            `?? ${desc ? '<=' : '>='} to_timestamp(${offsetRelativeToUnix})`,
+            [args.orderings[0].index]
+          )
+        : escape(`?? ${desc ? '<=' : '>='} ?`, [
+            args.orderings[0].index,
+            offsetRelativeTo,
+          ]),
       // @ts-ignore
       orderBy: orderBy.join(', '),
       offset: escape('?', [offset]),
