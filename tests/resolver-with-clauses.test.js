@@ -767,8 +767,8 @@ test('load new when there are none', async (t) => {
 
   const originalOffset = offset
   t.equal(offsetRelativeTo, JSON.stringify(items.length - 1), 'offsetRelativeTo is at top of list.')
-  offset = -2
   limit = 2
+  offset = -limit
   const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
   t.equal(res.nodes.length, 0, 'limit respected')
   t.equal(res.info.hasMore, false, 'hasMore false')
