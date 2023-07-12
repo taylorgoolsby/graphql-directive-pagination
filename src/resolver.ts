@@ -305,7 +305,9 @@ async function determineHasMore<T>(
   ctx: any,
   info: any,
   determinedOffsetRelativeTo: OffsetRelativeTo,
-  originalOffsetRelativeTo: OffsetRelativeTo
+  originalOffsetRelativeTo: OffsetRelativeTo,
+  // These are the final nodes which will be included in the response:
+  foundNodes: T[]
 ): Promise<{
   hasMore: boolean
   moreOffsetRelativeToOrignal: number
@@ -323,7 +325,7 @@ async function determineHasMore<T>(
   // The offset of the last row the client has loaded:
   const currentOffsetLast = countLoaded - 1
   // After this response, it will be the offset of the last row the client has loaded:
-  const nextOffsetLast = args.offset + args.limit - 1
+  const nextOffsetLast = args.offset + foundNodes.length - 1
   // Diff these two offsets:
   const diff = Math.max(nextOffsetLast - currentOffsetLast, 0)
   // After this response, it will be the client's countLoaded relative to the original offsetRelativeTo:
@@ -488,7 +490,6 @@ export default function resolver<T>(
       }
     }
 
-    // Do the first resolver call to determine if clauses are being used or not.
     if (args.offset < 0) {
       const negativeArgs = getNegativeOffsetArgs(args, offsetRelativeTo)
       const nodes = await memoR(parent, negativeArgs, ctx, info)
@@ -506,7 +507,8 @@ export default function resolver<T>(
         ctx,
         info,
         offsetRelativeTo,
-        originalOffsetRelativeTo
+        originalOffsetRelativeTo,
+        slicedNodes
       )
 
       const result: PaginationResult<T> = {
@@ -516,8 +518,8 @@ export default function resolver<T>(
           // then the current offsetRoot is the next row after the negative offset rows,
           // and that must occur on the next page, so there must be a next page.
           hasMore,
-          hasNew: startIndex !== 0,
-          countNew: startIndex,
+          hasNew: startIndex > 0,
+          countNew: Math.max(startIndex, 0),
           // If there is hasMore, it is found at moreOffset relative to nextOffsetRelativeTo.
           // This calculation relies on slicedNodes not containing any non-negative offset rows
           // relative to the originalOffsetRelativeTo.
@@ -525,7 +527,7 @@ export default function resolver<T>(
           // so the difference in places between the nextOffsetRelativeTo and the original is added.
           moreOffset: moreOffsetRelativeToOrignal + slicedNodes.length,
           nextOffsetRelativeTo: JSON.stringify(
-            slicedNodes[0]?.[args.orderings[0].index] ?? null
+            slicedNodes[0]?.[args.orderings[0].index] ?? offsetRelativeTo
           ),
         },
       }
@@ -547,7 +549,8 @@ export default function resolver<T>(
         ctx,
         info,
         offsetRelativeTo,
-        originalOffsetRelativeTo
+        originalOffsetRelativeTo,
+        nodes
       )
 
       const result: PaginationResult<T> = {

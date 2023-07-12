@@ -139,8 +139,8 @@ test('page load request on empty data source', async (t) => {
 
   offset = 0
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
-
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 0, 'limit respected')
   t.equal(res.info.hasMore, false, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -171,8 +171,8 @@ test('page load request on empty data source with negative offset', async (t) =>
 
   offset = -2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
-
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 0, 'limit respected')
   t.equal(res.info.hasMore, false, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -214,7 +214,7 @@ test('page load request with negative offset', async (t) => {
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
       return rows
     } else if (callSpy.callCount === 3) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
@@ -231,8 +231,8 @@ test('page load request with negative offset', async (t) => {
 
   offset = -2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
-
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.info.hasMore, true, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -268,7 +268,7 @@ test('page load request on non-zero starting page', async (t) => {
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
       return rows
     } else if (callSpy.callCount === 3) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
@@ -286,8 +286,8 @@ test('page load request on non-zero starting page', async (t) => {
 
   offset = limit * 2
   offsetRelativeTo = null // null offsetRelativeTo is the definition of a page load request.
-
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 5, 'row 5 found')
   t.equal(res.nodes[1].id, 4, 'row 4 found')
@@ -325,7 +325,7 @@ test('page load request', async (t) => {
       t.equal(rows[1].id, 8, 'getPositiveRows finds row 8')
       return rows
     } else if (callSpy.callCount === 3) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
@@ -342,8 +342,8 @@ test('page load request', async (t) => {
 
   offset = 0
   offsetRelativeTo = null
-
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: 0})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: 0})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.info.hasMore, true, 'hasMore true')
   t.equal(res.info.hasNew, false, 'hasNew false')
@@ -373,7 +373,7 @@ test('load more request', async (t) => {
       t.equal(rows[1].id, 6, 'getPositiveRows finds row 6')
       return rows
     } else if (callSpy.callCount === 2) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 0, 'getNegativeRows finds no rows')
@@ -388,7 +388,8 @@ test('load more request', async (t) => {
     }
   })
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 7, 'row 7 found')
   t.equal(res.nodes[1].id, 6, 'row 6 found')
@@ -423,7 +424,7 @@ test('load more request after new rows have been added', async (t) => {
       t.equal(rows[1].id, 4, 'getPositiveRows finds row 4')
       return rows
     } else if (callSpy.callCount === 2) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
@@ -440,7 +441,8 @@ test('load more request after new rows have been added', async (t) => {
     }
   })
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 5, 'row 5 found')
   t.equal(res.nodes[1].id, 4, 'row 4 found')
@@ -464,7 +466,7 @@ test('load new request', async (t) => {
 
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
-      testNegativeClauses(t, args, 9, 2)
+      testNegativeClauses(t, args, 9, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
@@ -481,10 +483,9 @@ test('load new request', async (t) => {
     }
   })
 
-  const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 11, 'row 11 found')
   t.equal(res.nodes[1].id, 10, 'row 10 found')
@@ -496,7 +497,6 @@ test('load new request', async (t) => {
   t.equal(callSpy.callCount, 2, 'call was made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
-  offset = tempOffset + lastRes.info.countNew
   lastRes = res
   items = [...res.nodes, ...items]
 })
@@ -520,7 +520,7 @@ test('add two more posts and continue load more where left off', async (t) => {
       t.equal(rows[1].id, 2, 'getPositiveRows finds row 2')
       return rows
     } else if (callSpy.callCount === 2) {
-      testNegativeClauses(t, args, 11, 2)
+      testNegativeClauses(t, args, 11, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
@@ -537,7 +537,8 @@ test('add two more posts and continue load more where left off', async (t) => {
     }
   })
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 3, 'row 3 found')
   t.equal(res.nodes[1].id, 2, 'row 2 found')
@@ -581,7 +582,6 @@ test('load new request while db added new rows', async (t) => {
     }
   })
 
-  const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
   const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
@@ -596,7 +596,6 @@ test('load new request while db added new rows', async (t) => {
   t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
-  offset = tempOffset + lastRes.info.countNew
   lastRes = res
   items = [...res.nodes, ...items]
 })
@@ -617,7 +616,7 @@ test('final load more request (has more false)', async (t) => {
       t.equal(rows[1].id, 0, 'getPositiveRows finds row 0')
       return rows
     } else if (callSpy.callCount === 2) {
-      testNegativeClauses(t, args, 13, 2)
+      testNegativeClauses(t, args, 13, 4)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getNegativeRows finds rows')
@@ -633,7 +632,8 @@ test('final load more request (has more false)', async (t) => {
     }
   })
 
-  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countLoaded: items.length})
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, countNewLimit: 4, orderings, offsetRelativeTo, countLoaded: items.length})
   t.equal(res.nodes.length, 2, 'limit respected')
   t.equal(res.nodes[0].id, 1, 'row 1 found')
   t.equal(res.nodes[1].id, 0, 'row 0 found')
@@ -674,7 +674,6 @@ test('final load new request', async (t) => {
     }
   })
 
-  const tempOffset = offset
   offset = -lastRes.info.countNew
   limit = lastRes.info.countNew
   const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
@@ -689,7 +688,6 @@ test('final load new request', async (t) => {
   t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
-  offset = tempOffset + lastRes.info.countNew
   lastRes = res
   items = [...res.nodes, ...items]
 
@@ -700,5 +698,87 @@ test('final load new request', async (t) => {
   }
 })
 
-// todo: test hasMore false to return empty array
-// todo: test hasNew false to return empty array
+test('load more when there are none', async (t) => {
+  const callSpy = sinon.spy()
+
+  const wrappedResolver = pagination(async (parent, args) => {
+    callSpy()
+
+    t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
+    if (callSpy.callCount === 1) {
+      testPositiveClauses(t, args, 15, 16, 2)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'getPositiveRows finds no rows')
+      return rows
+    } else if (callSpy.callCount === 2) {
+      testNegativeClauses(t, args, 15, 4)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 15, 16, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'hasMore find no rows')
+      return rows
+    }
+  })
+
+  t.equal(offset, items.length, 'offset is on the imaginary more row')
+  t.equal(offsetRelativeTo, JSON.stringify(items.length - 1), 'offsetRelativeTo is at top of list.')
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
+  t.equal(res.nodes.length, 0, 'limit respected')
+  t.equal(res.info.hasMore, false, 'hasMore false')
+  t.equal(res.info.hasNew, false, 'hasNew false')
+  t.equal(res.info.countNew, 0, 'countNew 0')
+  t.equal(res.info.moreOffset, offset, 'moreOffset does not change')
+  t.equal(res.info.nextOffsetRelativeTo, offsetRelativeTo, 'nextOffsetRelativeTo does not change')
+  t.equal(callSpy.callCount, 3, 'calls made')
+  offset = res.info.moreOffset
+  offsetRelativeTo = res.info.nextOffsetRelativeTo
+  lastRes = res
+  items = [...items, ...res.nodes]
+})
+
+test('load more when there are none', async (t) => {
+  const callSpy = sinon.spy()
+
+  const wrappedResolver = pagination(async (parent, args) => {
+    callSpy()
+
+    t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
+    if (callSpy.callCount === 1) {
+      testNegativeClauses(t, args, 15, 4)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'getNegativeRows finds no rows')
+      return rows
+    } else {
+      testPositiveClauses(t, args, 15, 16, 1)
+
+      const rows = await postsResolver(parent, args)
+      t.equal(rows.length, 0, 'hasMore find no rows')
+      return rows
+    }
+  })
+
+  const originalOffset = offset
+  t.equal(offsetRelativeTo, JSON.stringify(items.length - 1), 'offsetRelativeTo is at top of list.')
+  offset = -2
+  limit = 2
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
+  t.equal(res.nodes.length, 0, 'limit respected')
+  t.equal(res.info.hasMore, false, 'hasMore false')
+  t.equal(res.info.hasNew, false, 'hasNew false')
+  t.equal(res.info.countNew, 0, 'countNew 0')
+  t.equal(res.info.moreOffset, originalOffset, 'moreOffset does not change')
+  t.equal(res.info.nextOffsetRelativeTo, offsetRelativeTo, 'nextOffsetRelativeTo does not change')
+  t.equal(callSpy.callCount, 2, 'calls made')
+  offset = res.info.moreOffset
+  offsetRelativeTo = res.info.nextOffsetRelativeTo
+  lastRes = res
+  items = [...res.nodes, ...items]
+})
