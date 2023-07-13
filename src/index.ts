@@ -35,9 +35,7 @@ import {
   GraphQLInputFieldConfig,
 } from 'graphql'
 import { mergeSchemas } from '@graphql-tools/schema'
-import { default as _resolver } from './resolver.js'
-
-export const pagination = _resolver
+import { configurePagination } from './resolver.js'
 
 type DirectableGraphQLObject =
   | GraphQLSchema
@@ -57,6 +55,9 @@ type DirectableGraphQLObject =
   | GraphQLInputFieldConfig
 
 export type PaginationDirectiveOptions = {
+  // The timezone of your SQL server.
+  // This can be 'local', 'utc', or an offset in the form +HH:MM or -HH:MM. (Default: 'utc')
+  timezone?: string
   useCacheControl?: boolean
 }
 
@@ -65,6 +66,7 @@ export default function paginationDirective(
   options?: PaginationDirectiveOptions
 ) {
   return {
+    paginationResolver: configurePagination(options?.timezone ?? 'utc'),
     paginationDirectiveTypeDefs: `directive @${directiveName} on FIELD_DEFINITION`,
     paginationDirectiveTransform: (
       schema: GraphQLSchema,

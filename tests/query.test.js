@@ -3,7 +3,6 @@ import {makeExecutableSchema} from '@graphql-tools/schema'
 import paginationDirective from '../lib/index.js'
 import {print} from 'graphql'
 import gql from 'graphql-tag'
-import pagination from '../lib/resolver.js'
 import sqlite3 from 'sqlite3'
 import {open} from 'sqlite'
 import express from 'express'
@@ -12,6 +11,7 @@ import fetch from 'cross-fetch'
 import bodyParser from "body-parser";
 
 const {
+  paginationResolver: pagination,
   paginationDirectiveTypeDefs,
   paginationDirectiveTransform,
 } = paginationDirective('pagination')

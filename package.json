@@ -6,7 +6,6 @@
   "type": "module",
   "exports": {
     ".": "./lib/index.js",
-    "./resolver": "./lib/resolver.js",
     "./package.json": "./package.json"
   },
   "license": "MIT",
@@ -42,6 +41,7 @@
     "@graphql-tools/stitch": "^9.0.0",
     "@graphql-tools/utils": "^10.0.3",
     "@graphql-tools/wrap": "^10.0.0",
+    "luxon": "^3.3.0",
     "mysql": "2.18.1"
   },
   "devDependencies": {

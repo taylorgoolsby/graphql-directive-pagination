@@ -1,6 +1,8 @@
 import test from 'boxtape'
-import pagination from '../lib/resolver.js'
+import paginationDirective from '../lib/index.js'
 import sinon from 'sinon'
+
+const {paginationResolver: pagination} = paginationDirective('pagination', {timezone: 'utc'})
 
 const posts = []
 

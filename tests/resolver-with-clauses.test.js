@@ -1,8 +1,14 @@
 import test from 'boxtape'
-import pagination from '../lib/resolver.js'
+import paginationDirective from '../lib/index.js'
 import sinon from 'sinon'
 import sqlite3 from 'sqlite3'
 import {open} from 'sqlite'
+
+const {paginationResolver: pagination} = paginationDirective('pagination', {
+  timezone: 'utc'
+})
+
+console.log('pagination', pagination)
 
 const db = await open({
   filename: ':memory:',
@@ -15,13 +21,23 @@ await db.exec(`
   CREATE TABLE Posts (
     id INT NOT NULL,
     userId INT NOT NULL,
-    dateCreated INT NOT NULL
+    dateCreated TIMESTAMP NOT NULL
   );
 `)
 
+function getTimestamp(id) {
+  return `2023-07-13 00:00:${id.toString().padStart(2, '0')}.000`
+}
+
+function toISO(timestamp) {
+  timestamp = timestamp.replace(' ', 'T')
+  timestamp = timestamp + 'Z'
+  return timestamp
+}
+
 async function insertPost() {
   const lastPost = posts[posts.length - 1]
-  const post = lastPost ? {id: lastPost.id + 1, dateCreated: lastPost.dateCreated + 1} : {id: 0, dateCreated: 0}
+  const post = lastPost ? {id: lastPost.id + 1, dateCreated: getTimestamp(lastPost.id + 1)} : {id: 0, dateCreated: getTimestamp(0)}
   const query = `
     INSERT INTO Posts (
       id,
@@ -30,7 +46,7 @@ async function insertPost() {
     ) VALUES (
       ${post.id},
       0,
-      ${post.dateCreated}
+      '${post.dateCreated}'
     );
   `
   await db.exec(query)
@@ -68,6 +84,9 @@ async function getPosts(clauses) {
     LIMIT ${clauses.limit};
   `
   const rows = await db.all(query)
+  for (const item of rows) {
+    item.dateCreated = toISO(item.dateCreated)
+  }
   return rows
 }
 
@@ -94,28 +113,32 @@ function testGetOffsetRelativeToClauses(t, args) {
 }
 
 function testPositiveClauses(t, args, offsetRelativeTo, expectedOffset, expectedLimit) {
+  offsetRelativeTo = getTimestamp(offsetRelativeTo)
+
   t.equal(args.offset, expectedOffset, 'offset arg')
   t.equal(args.limit, expectedLimit, 'limit arg')
 
-  t.equal(args.clauses.mysql.where, `\`dateCreated\` <= ${offsetRelativeTo}`, 'mysql where arg, getPositiveRows call')
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` <= '${offsetRelativeTo}'`, 'mysql where arg, getPositiveRows call')
   t.equal(args.clauses.mysql.orderBy, '`dateCreated` DESC, `id` DESC', 'mysql orderBy arg, getPositiveRows call')
   t.equal(args.clauses.mysql.limit, `${expectedOffset}, ${expectedLimit}`, 'mysql limit arg, getPositiveRows call')
 
-  t.equal(args.clauses.mysql.where, `\`dateCreated\` <= ${offsetRelativeTo}`, 'postgres where arg, getPositiveRows call')
+  t.equal(args.clauses.postgres.where, `\`dateCreated\` <= '${offsetRelativeTo}'`, 'postgres where arg, getPositiveRows call')
   t.equal(args.clauses.postgres.orderBy, '`dateCreated` DESC, `id` DESC', 'postgres orderBy arg, getPositiveRows call')
   t.equal(args.clauses.postgres.offset, `${expectedOffset}`, 'postgres offset arg, getPositiveRows call')
   t.equal(args.clauses.postgres.limit, `${expectedLimit}`, 'postgres limit arg, getPositiveRows call')
 }
 
 function testNegativeClauses(t, args, offsetRelativeTo, expectedLimit) {
+  offsetRelativeTo = getTimestamp(offsetRelativeTo)
+
   t.equal(args.offset, 0, 'offset arg')
   t.equal(args.limit, expectedLimit, 'limit arg')
 
-  t.equal(args.clauses.mysql.where, `\`dateCreated\` > ${offsetRelativeTo}`, 'mysql where arg, getNegativeRows call')
+  t.equal(args.clauses.mysql.where, `\`dateCreated\` > '${offsetRelativeTo}'`, 'mysql where arg, getNegativeRows call')
   t.equal(args.clauses.mysql.orderBy, '`dateCreated` ASC, `id` ASC', 'mysql orderBy arg, getNegativeRows call')
   t.equal(args.clauses.mysql.limit, `0, ${expectedLimit}`, 'mysql limit arg, getNegativeRows call')
 
-  t.equal(args.clauses.mysql.where, `\`dateCreated\` > ${offsetRelativeTo}`, 'postgres where arg, getNegativeRows call')
+  t.equal(args.clauses.postgres.where, `\`dateCreated\` > '${offsetRelativeTo}'`, 'postgres where arg, getNegativeRows call')
   t.equal(args.clauses.postgres.orderBy, '`dateCreated` ASC, `id` ASC', 'postgres orderBy arg, getNegativeRows call')
   t.equal(args.clauses.postgres.offset, `0`, 'postgres offset arg, getNegativeRows call')
   t.equal(args.clauses.postgres.limit, `${expectedLimit}`, 'postgres limit arg, getNegativeRows call')
@@ -238,7 +261,7 @@ test('page load request with negative offset', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.moreOffset, 2, 'moreOffset 2')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(9))), 'nextOffsetRelativeTo is greatest dateCreated')
   t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -295,7 +318,7 @@ test('page load request on non-zero starting page', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.moreOffset, 6, 'moreOffset 6')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(9))), 'nextOffsetRelativeTo is greatest dateCreated')
   t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -349,7 +372,7 @@ test('page load request', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.moreOffset, 2, 'moreOffset 2')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo is greatest dateCreated')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(9))), 'nextOffsetRelativeTo is greatest dateCreated')
   t.equal(callSpy.callCount, 4, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -397,7 +420,7 @@ test('load more request', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 0')
   t.equal(res.info.moreOffset, 4, 'moreOffset 4')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo unchanged')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(9))), 'nextOffsetRelativeTo unchanged')
   t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -417,6 +440,8 @@ test('load more request after new rows have been added', async (t) => {
     t.equal(JSON.stringify(args.orderings), JSON.stringify(orderings), 'orderings arg')
     if (callSpy.callCount === 1) {
       testPositiveClauses(t, args, 9, 4, 2)
+
+      console.log('args', args)
 
       const rows = await postsResolver(parent, args)
       t.equal(rows.length, 2, 'getPositiveRows finds 3 rows (1 extra row)')
@@ -450,7 +475,7 @@ test('load more request after new rows have been added', async (t) => {
   t.equal(res.info.hasNew, true, 'hasNew true')
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.moreOffset, 6, 'moreOffset 6')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(9), 'nextOffsetRelativeTo unchanged')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(9))), 'nextOffsetRelativeTo unchanged')
   t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -493,7 +518,7 @@ test('load new request', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 2')
   t.equal(res.info.moreOffset, 8, 'moreOffset 8')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(11), 'nextOffsetRelativeTo reset')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(11))), 'nextOffsetRelativeTo reset')
   t.equal(callSpy.callCount, 2, 'call was made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
@@ -546,7 +571,7 @@ test('add two more posts and continue load more where left off', async (t) => {
   t.equal(res.info.hasNew, true, 'hasNew true')
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.moreOffset, 10, 'moreOffset 10')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(11), 'nextOffsetRelativeTo unchanged')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(11))), 'nextOffsetRelativeTo unchanged')
   t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -592,7 +617,7 @@ test('load new request while db added new rows', async (t) => {
   t.equal(res.info.hasNew, true, 'hasNew true')
   t.equal(res.info.countNew, 2, 'countNew 2')
   t.equal(res.info.moreOffset, 12, 'moreOffset 12')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(13), 'nextOffsetRelativeTo reset')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(13))), 'nextOffsetRelativeTo reset')
   t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
@@ -642,7 +667,7 @@ test('final load more request (has more false)', async (t) => {
   t.equal(res.info.countNew, 2, 'countNew 2')
   // Even though hasMore is false, moreOffset is still advanced in case client wants to query after waiting some time.
   t.equal(res.info.moreOffset, 14, 'moreOffset 14')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(13), 'nextOffsetRelativeTo unchanged')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(13))), 'nextOffsetRelativeTo unchanged')
   t.equal(callSpy.callCount, 3, 'calls were made')
   lastRes = res
   offset = res.info.moreOffset
@@ -684,7 +709,7 @@ test('final load new request', async (t) => {
   t.equal(res.info.hasNew, false, 'hasNew false')
   t.equal(res.info.countNew, 0, 'countNew 2')
   t.equal(res.info.moreOffset, 16, 'moreOffset 16')
-  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(15), 'nextOffsetRelativeTo reset')
+  t.equal(res.info.nextOffsetRelativeTo, JSON.stringify(toISO(getTimestamp(15))), 'nextOffsetRelativeTo reset')
   t.equal(callSpy.callCount, 2, 'calls made')
   offset = res.info.moreOffset
   offsetRelativeTo = res.info.nextOffsetRelativeTo
@@ -727,7 +752,7 @@ test('load more when there are none', async (t) => {
   })
 
   t.equal(offset, items.length, 'offset is on the imaginary more row')
-  t.equal(offsetRelativeTo, JSON.stringify(items.length - 1), 'offsetRelativeTo is at top of list.')
+  t.equal(offsetRelativeTo, JSON.stringify(toISO(getTimestamp(items.length - 1))), 'offsetRelativeTo is at top of list.')
   limit = 2
   const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
   t.equal(res.nodes.length, 0, 'limit respected')
@@ -766,7 +791,7 @@ test('load new when there are none', async (t) => {
   })
 
   const originalOffset = offset
-  t.equal(offsetRelativeTo, JSON.stringify(items.length - 1), 'offsetRelativeTo is at top of list.')
+  t.equal(offsetRelativeTo, JSON.stringify(toISO(getTimestamp(items.length - 1))), 'offsetRelativeTo is at top of list.')
   limit = 2
   offset = -limit
   const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})

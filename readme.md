@@ -28,7 +28,16 @@ Steps:
 import paginationDirective from 'graphql-directive-pagination'
 import { makeExecutableSchema } from '@graphql-tools/schema'
 
-const { paginationDirectiveTransform, paginationDirectiveTypeDefs } = paginationDirective('pagination')
+const { 
+  // Wrap your resolvers with paginationResolver
+  paginationResolver,
+  paginationDirectiveTransform, 
+  paginationDirectiveTypeDefs 
+} = paginationDirective('pagination', {
+  // The timezone of your SQL server.
+  // This can be 'local', 'utc', or an offset in the form +HH:MM or -HH:MM. (Default: 'utc')
+  timezone: 'utc'
+})
 
 const typeDefs = `
   directive @pagination on FIELD_DEFINITION
@@ -184,7 +193,7 @@ export const typeDefs = `
 
 export const resolvers = {
   User: {
-    posts: pagination(async (user, args, ctx, info): Promise<Array<Post>> => {
+    posts: paginationResolver(async (user, args, ctx, info): Promise<Array<Post>> => {
       // See the SQL Queries section for instructions on how to use `args.clauses.mysql`.
       const posts = await PostDB.getByUserId(user.userId, args.clauses.mysql)
       return posts
