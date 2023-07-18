@@ -28,8 +28,7 @@ Steps:
 import paginationDirective from 'graphql-directive-pagination'
 import { makeExecutableSchema } from '@graphql-tools/schema'
 
-const { 
-  // Wrap your resolvers with paginationResolver
+const {
   paginationResolver,
   paginationDirectiveTransform, 
   paginationDirectiveTypeDefs 
@@ -38,6 +37,9 @@ const {
   // This can be 'local', 'utc', or an offset in the form +HH:MM or -HH:MM. (Default: 'utc')
   timezone: 'utc'
 })
+
+// Wrap your resolvers with paginationResolver
+export const pagination = paginationResolver
 
 const typeDefs = `
   directive @pagination on FIELD_DEFINITION

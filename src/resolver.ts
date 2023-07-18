@@ -485,7 +485,7 @@ export function configurePagination(timezone: string) {
         const nodes = await memoR(parent, negativeArgs, ctx, info)
 
         // The nodes returned from negativeOffsetClauses is reversed.
-        const startIndex = nodes.length + args.offset
+        const startIndex = Math.max(nodes.length + args.offset, 0)
         const slicedNodes = nodes
           .reverse()
           .slice(startIndex, startIndex + args.limit)

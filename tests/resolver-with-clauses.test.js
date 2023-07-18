@@ -208,12 +208,61 @@ test('page load request on empty data source with negative offset', async (t) =>
   offsetRelativeTo = res.info.nextOffsetRelativeTo
 })
 
+test('load new when list is small', async (t) => {
+  // Initial post is added so that offsetRelativeCan be established.
+  await insertPost()
+  const initialResolver = pagination(async (parent, args) => {
+    return await postsResolver(parent, args)
+  })
+  const initialRes = await initialResolver({}, {offset: 0, limit, orderings, offsetRelativeTo: null, countNewLimit: 4, countLoaded: 0})
+  offset = initialRes.info.moreOffset
+  offsetRelativeTo = initialRes.info.nextOffsetRelativeTo
+  lastRes = initialRes
+  items = initialRes.nodes
+
+  const callSpy = sinon.spy()
+  const wrappedResolver = pagination(async (parent, args) => {
+    callSpy()
+    const rows = await postsResolver(parent, args)
+
+    if (callSpy.callCount === 1) {
+      testNegativeClauses(t, args, 0, 4)
+      t.equal(rows.length, 2, '2 rows should have been found in the negative query')
+    }
+
+    return rows
+  })
+
+  await insertPost()
+  await insertPost()
+
+  t.equal(items.length, 1, 'there is 1 item found initially')
+  t.equal(items[0].id, 0, 'it is row 0')
+
+  const originalOffset = offset
+  t.equal(offsetRelativeTo, JSON.stringify(toISO(getTimestamp(items.length - 1))), 'offsetRelativeTo is at top of list.')
+  limit = 3
+  offset = -limit
+  const res = await wrappedResolver({}, {offset, limit, orderings, offsetRelativeTo, countNewLimit: 4, countLoaded: items.length})
+  t.equal(res.nodes.length, 2, 'the 2 new rows should have been found')
+  t.equal(res.nodes[0].id, 2, 'row 2')
+  t.equal(res.nodes[1].id, 1, 'row 1')
+  t.equal(res.info.hasMore, false, 'hasMore false')
+  t.equal(res.info.hasNew, false, 'hasNew false')
+  t.equal(res.info.countNew, 0, 'countNew 0')
+  t.equal(res.info.moreOffset, 3, 'moreOffset does not change')
+  offset = res.info.moreOffset
+  offsetRelativeTo = res.info.nextOffsetRelativeTo
+  lastRes = res
+  items = [...res.nodes, ...items]
+})
+
 test('page load request with negative offset', async (t) => {
   // The response of this case should be equivalent to a
   // page load with offset: 0.
   const callSpy = sinon.spy()
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 7; i++) {
     await insertPost()
   }
 
