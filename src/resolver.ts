@@ -64,6 +64,10 @@ export function configurePagination(timezone: string) {
 
   function toSQLTimestamp(timestamp: any): string | null {
     if (timestamp instanceof Date || typeof timestamp === 'string') {
+      if (typeof timestamp === 'string' && /^\d+$/.test(timestamp)) {
+        // This is a string only containing numbers, so attempt to parse it as a unix millis timestamp.
+        timestamp = parseInt(timestamp, 10)
+      }
       const a = new Date(timestamp)
       const dt = DateTime.fromJSDate(a, { zone: timezone })
       if (!dt.isValid) {
