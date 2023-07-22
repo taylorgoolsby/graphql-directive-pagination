@@ -56,9 +56,6 @@ export function configurePagination(timezone: string) {
   function escape(template: string, values: any[]): string {
     // This relies on the fact that for our use cases,
     // the WHERE and ORDER BY clauses are the same in MySQL and PostgresQL.
-    // console.log('template.sql', template.sql)
-    // console.log('template.values', template.values)
-    // console.log('mysql.format(template.sql, template.values)', mysql.format(template.sql, template.values))
     return mysql.format(template, values)
   }
 
@@ -141,10 +138,16 @@ export function configurePagination(timezone: string) {
       },
     })
 
+    const reverseOrderings = args.orderings.map((ordering) => ({
+      index: ordering.index,
+      direction: ordering.direction.toUpperCase() === 'DESC' ? 'ASC' : 'DESC',
+    }))
+
     return {
       ...args,
       offset,
       limit,
+      orderings: reverseOrderings,
       clauses: proxyClauses,
       offsetRelativeTo: JSON.stringify(offsetRelativeTo),
     }
@@ -449,7 +452,6 @@ export function configurePagination(timezone: string) {
     r: WrappedResolver<T>
   ): IFieldResolver<any, any, PaginationArgs, Promise<PaginationResult<T>>> {
     return async (parent, args: PaginationArgs, ctx, info) => {
-      // console.log('info', JSON.stringify(info.operation.selectionSet, null, '  '))
       if (!args?.orderings?.[0]) {
         // There has to be at least 1 ordering
         // return emptyResult
@@ -485,7 +487,13 @@ export function configurePagination(timezone: string) {
       }
 
       if (args.offset < 0) {
-        const negativeArgs = getNegativeOffsetArgs(args, offsetRelativeTo)
+        const negativeArgs = getNegativeOffsetArgs(
+          {
+            ...args,
+            countNewLimit: args.limit,
+          },
+          offsetRelativeTo
+        )
         const nodes = await memoR(parent, negativeArgs, ctx, info)
 
         // The nodes returned from negativeOffsetClauses is reversed.
@@ -493,6 +501,13 @@ export function configurePagination(timezone: string) {
         const slicedNodes = nodes
           .reverse()
           .slice(startIndex, startIndex + args.limit)
+
+        const nextOffsetRelativeTo =
+          slicedNodes[0]?.[args.orderings[0].index] ?? offsetRelativeTo
+
+        // Get the count of rows associated with negative offset as countNew:
+        const newRowArgs = getNegativeOffsetArgs(args, nextOffsetRelativeTo)
+        const negativeNodes = await memoR(parent, newRowArgs, ctx, info)
 
         const { hasMore, moreOffsetRelativeToOrignal } = await determineHasMore(
           memoR,
@@ -512,17 +527,17 @@ export function configurePagination(timezone: string) {
             // then the current offsetRoot is the next row after the negative offset rows,
             // and that must occur on the next page, so there must be a next page.
             hasMore,
-            hasNew: startIndex > 0,
-            countNew: Math.max(startIndex, 0),
+            // hasNew: startIndex > 0,
+            // countNew: Math.max(startIndex, 0),
+            hasNew: !!negativeNodes.length,
+            countNew: negativeNodes.length,
             // If there is hasMore, it is found at moreOffset relative to nextOffsetRelativeTo.
             // This calculation relies on slicedNodes not containing any non-negative offset rows
             // relative to the originalOffsetRelativeTo.
             // These slicedNodes are being added before the originalOffsetRelativeTo,
             // so the difference in places between the nextOffsetRelativeTo and the original is added.
             moreOffset: moreOffsetRelativeToOrignal + slicedNodes.length,
-            nextOffsetRelativeTo: JSON.stringify(
-              slicedNodes[0]?.[args.orderings[0].index] ?? offsetRelativeTo
-            ),
+            nextOffsetRelativeTo: JSON.stringify(nextOffsetRelativeTo),
           },
         }
 
