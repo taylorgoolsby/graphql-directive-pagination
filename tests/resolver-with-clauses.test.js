@@ -54,26 +54,6 @@ async function insertPost() {
 const orderings = [{index: 'dateCreated', direction: 'desc'}, {index: 'id', direction: 'desc'}]
 const reversedOrderings = [{index: 'dateCreated', direction: 'ASC'}, {index: 'id', direction: 'ASC'}]
 
-const typeDefs = `
-  type User {
-    id: Int 
-    test: [Something!]! @pagination
-    posts: [Post!]!
-  }
-  
-  type Something {
-    id: Int
-  }
-
-  type Post {
-    id: Int
-  }
-
-  type Query {
-    user: User
-  }
-`
-
 async function getPosts(clauses) {
   const query = `
     SELECT * FROM Posts
@@ -244,7 +224,6 @@ test('load new when list is small', async (t) => {
   t.equal(items.length, 1, 'there is 1 item found initially')
   t.equal(items[0].id, 0, 'it is row 0')
 
-  const originalOffset = offset
   t.equal(offsetRelativeTo, JSON.stringify(toISO(getTimestamp(items.length - 1))), 'offsetRelativeTo is at top of list.')
   limit = 3
   offset = -limit

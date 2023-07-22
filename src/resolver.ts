@@ -59,13 +59,26 @@ export function configurePagination(timezone: string) {
     return mysql.format(template, values)
   }
 
-  function toSQLTimestamp(timestamp: any): string | null {
+  function toJSDate(timestamp: any): Date | null {
     if (timestamp instanceof Date || typeof timestamp === 'string') {
       if (typeof timestamp === 'string' && /^\d+$/.test(timestamp)) {
         // This is a string only containing numbers, so attempt to parse it as a unix millis timestamp.
         timestamp = parseInt(timestamp, 10)
       }
       const a = new Date(timestamp)
+      if (isNaN(a.valueOf())) {
+        return null
+      } else {
+        return a
+      }
+    } else {
+      return null
+    }
+  }
+
+  function toSQLTimestamp(timestamp: any): string | null {
+    const a = toJSDate(timestamp)
+    if (a) {
       const dt = DateTime.fromJSDate(a, { zone: timezone })
       if (!dt.isValid) {
         return null
@@ -360,18 +373,28 @@ export function configurePagination(timezone: string) {
 
   function noClauseSort(nodes: any[], args: PaginationArgs) {
     nodes.sort((a, b) => {
-      let orderingsIndex = 0
+      const aValue =
+        toJSDate(a[args.orderings[0].index]) ?? a[args.orderings[0].index]
+      const bValue =
+        toJSDate(b[args.orderings[0].index]) ?? b[args.orderings[0].index]
 
+      let orderingsIndex = 0
       while (args.orderings[orderingsIndex]) {
         // Keep trying to find a difference between a and b with respect to
         // the orderings.
+        if (aValue < bValue) {
+          return args.orderings[orderingsIndex].direction.toUpperCase() ===
+            'DESC'
+            ? 1
+            : -1
+        }
+        if (aValue > bValue) {
+          return args.orderings[orderingsIndex].direction.toUpperCase() ===
+            'DESC'
+            ? -1
+            : 1
+        }
 
-        if (a[args.orderings[0].index] < b[args.orderings[0].index]) {
-          return args.orderings[0].direction.toUpperCase() === 'DESC' ? 1 : -1
-        }
-        if (a[args.orderings[0].index] > b[args.orderings[0].index]) {
-          return args.orderings[0].direction.toUpperCase() === 'DESC' ? -1 : 1
-        }
         orderingsIndex++
       }
 
@@ -385,11 +408,15 @@ export function configurePagination(timezone: string) {
   // Returned arrays from memoR are always sorted, offsetted, and limited,
   // but in the case where clauses are not used, memoization is used so that,
   // only one call to the underlying resolver is ever made.
-  function makeMemoizedResolver<T>(r: WrappedResolver<T>): WrappedResolver<T> {
+  function makeMemoizedResolver<T>(
+    r: WrappedResolver<T>,
+    originalArgs: PaginationArgs
+  ): WrappedResolver<T> {
     let memoizedValue
     let useMemo = false
     return async (p, a: PaginationArgs, c, i) => {
       if (useMemo) {
+        // memoizedValue = noClauseSort(memoizedValue, a)
         return noClauseOffsetAndLimit(memoizedValue, a)
       }
       const nodes = await r(p, a, c, i)
@@ -397,7 +424,7 @@ export function configurePagination(timezone: string) {
       // @ts-ignore
       if (!a.clauses[usedSymbol]) {
         useMemo = true
-        memoizedValue = noClauseSort(nodes, a)
+        memoizedValue = noClauseSort(nodes, originalArgs)
         return noClauseOffsetAndLimit(memoizedValue, a)
       }
 
@@ -458,7 +485,7 @@ export function configurePagination(timezone: string) {
         throw Error('There must be at least one ordering.')
       }
 
-      const memoR = makeMemoizedResolver(r)
+      const memoR = makeMemoizedResolver(r, args)
 
       let offsetRelativeTo: OffsetRelativeTo = args.offsetRelativeTo
         ? JSON.parse(args.offsetRelativeTo)
